@@ -1,6 +1,6 @@
 import JobDetails from "@/components/Careers/JobDetails";
 import Seo from "@/components/common/Seo";
-import { fetchApi } from "@/utils/functionUtils";
+import { fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from "@/utils/functionUtils";
 import { mapCareer } from "@/utils/mappers";
 import { breadcrumbSchema, jobPostingSchema } from "@/utils/seo";
 import React from "react";
@@ -52,17 +52,20 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }) {
-    const res = await fetchApi(`/api/career/?slug=${params.slug}`);
+    const res = await fetchApi(
+        `/api/career/?slug=${encodeURIComponent(params.slug)}`,
+    );
     const job = mapCareer(res?.results?.[0]);
 
     if (!job) {
-        return { notFound: true, revalidate: 1 };
+        return { notFound: true, revalidate: REVALIDATE_SECONDS };
     }
 
     // Related openings: everything else that is still open
-    const related_res = await fetchApi(
-        `/api/career/?is_active=true&order_by=order_by`,
-    );
+    const [related_res, { seoHead }] = await Promise.all([
+        fetchApi(`/api/career/?is_active=true&order_by=order_by`),
+        fetchPageSeo(`/careers/${job.slug}`),
+    ]);
 
     const relatedJobs = (related_res?.results || [])
         .map((record) => mapCareer(record))
@@ -70,8 +73,8 @@ export async function getStaticProps({ params }) {
         .slice(0, 2);
 
     return {
-        props: { job, relatedJobs },
-        revalidate: 1,
+        props: { job, relatedJobs, seoHead },
+        revalidate: REVALIDATE_SECONDS,
     };
 }
 

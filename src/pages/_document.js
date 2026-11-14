@@ -1,8 +1,9 @@
 import { Html, Head, Main, NextScript } from "next/document";
+import site from "@/site.config";
 
 export default function Document() {
   return (
-    <Html lang="en">
+    <Html lang={site.locale}>
       <Head>
         {/* Poppins lives here rather than in _app: next/head only guarantees a
             custom font for the page that renders it (@next/next/no-page-custom-font) */}

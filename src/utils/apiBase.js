@@ -121,84 +121,53 @@ function flattenErrors(value, key = null) {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Browser-side client for one CMS endpoint. Use it from components (inside
+ * effects and event handlers), never from getStaticProps — server code uses
+ * `fetchApi()` in functionUtils, which cannot fail a build.
+ */
 export default class APIBase {
-  // Constructor to initialize APIBase with custom configuration
   constructor(config) {
     if (!config.baseURL) throw new Error("Base URL cannot be empty");
 
-    // Configuration defaults are set here, allowing for customization
     this.config = {
-      baseURL: config.baseURL, // Base URL for API requests
+      baseURL: config.baseURL,
       defaultHeaders: config.defaultHeaders || {
         "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
-      }, // Default headers for all requests
-      timeout: config.timeout || 30000, // Request timeout in milliseconds
-      tokenKey: config.tokenKey || false, // Key for storing JWT token in local storage
-      retryLimit: config.retryLimit || 1, // Number of retries for failed requests
-      debounceDelay: config.debounceDelay || 0,
-      // Delay for debouncing requests
-
+      },
+      timeout: config.timeout || 30000,
       // How many toasts to show at once before summarizing the rest.
       maxToasts: config.maxToasts || 4,
       // Set true to also toast on failed GET/read requests (default: false).
       notifyOnRead: config.notifyOnRead || false,
     };
 
-    // Creating an axios instance with the provided configuration
     this.apiClient = axios.create({
       baseURL: this.config.baseURL,
       headers: this.config.defaultHeaders,
       timeout: this.config.timeout,
     });
 
-    // Bind methods to ensure 'this' context
+    // so the verbs can be passed around detached from the instance
     this.get = this.get.bind(this);
     this.post = this.post.bind(this);
     this.put = this.put.bind(this);
     this.patch = this.patch.bind(this);
     this.delete = this.delete.bind(this);
 
-    // Interceptors for handling request and response
-    this.apiClient.interceptors.request.use(
-      (config) => {
-        const language =
-          typeof window !== "undefined"
-            ? localStorage.getItem("language") || "en"
-            : "en";
+    this.apiClient.interceptors.request.use((requestConfig) => {
+      let language = "en";
+      try {
+        language = window.localStorage.getItem("language") || "en";
+      } catch {
+        // no window during SSR, or storage blocked in a privacy mode
+      }
 
-        config.headers["X-Language"] = language;
-
-        const token = localStorage.getItem("access_token");
-
-        // if (token) {
-        //   config.headers["Authorization"] = `Bearer ${token}`;
-        // }
-
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    // Debounce Settings
-    if (this.config.debounceDelay) {
-      // Apply debouncing only if debounceDelay is configured
-      this.get = this.debounceRequest(this.get);
-      this.post = this.debounceRequest(this.post);
-      // ... similarly for put, patch, delete
-    }
+      requestConfig.headers["X-Language"] = language;
+      return requestConfig;
+    });
   }
-
-  addToken(token) {
-    if (token) {
-      this.config.defaultHeaders["Authorization"] = `Bearer ${token}`;
-    }
-  }
-
-  // Method to handle successful responses
-  handleSuccessResponse = (response) => {
-    return response;
-  };
 
   /**
    * Normalize any backend error payload into an array of human-readable
@@ -265,9 +234,6 @@ export default class APIBase {
     return [typeof generic === "string" ? generic : fallback];
   };
 
-  // Backwards-compatible single-string version (kept for existing callers).
-  extract_error_message = (data) => this.extractErrorMessages(data).join("\n");
-
   // Show one toast per message, capping to avoid flooding the screen.
   notifyErrors = (messages) => {
     const list = dedupe(Array.isArray(messages) ? messages : [messages]);
@@ -285,6 +251,13 @@ export default class APIBase {
 
   // Side effects only (logging + toasts). Control flow lives in makeRequest.
   handleErrorResponse = (error) => {
+    const method = error?.config?.method?.toLowerCase();
+    const isMutating = ["post", "put", "patch", "delete"].includes(method);
+    // Writes are the visitor's own action, so they always hear about a
+    // failure. Reads are background content loads and stay quiet unless the
+    // instance opts in — except auth errors, which are never routine.
+    const notify = isMutating || this.config.notifyOnRead;
+
     const { response } = error;
 
     if (response) {
@@ -293,171 +266,59 @@ export default class APIBase {
 
       console.error("API error:", status, config?.url, messages);
 
-      const method = config?.method?.toLowerCase();
-      const isMutating = ["post", "put", "patch", "delete"].includes(method);
-
-      // Toast on writes and auth errors by default. Reads can opt in via config.
-      if (isMutating || status === 401 || status === 403 || this.config.notifyOnRead) {
+      if (notify || status === 401 || status === 403) {
         this.notifyErrors(messages);
       }
     } else if (error.request) {
-      console.error("Network error:", error.request);
-      toast.error("No response from the server. Please check your connection.");
+      console.error("Network error:", error.message);
+      if (notify) {
+        toast.error("No response from the server. Please check your connection.");
+      }
     } else {
       console.error("Unexpected error:", error.message);
-      toast.error(error.message || "Something went wrong");
+      if (notify) toast.error(error.message || "Something went wrong");
     }
   };
 
-  // General method to make an API request
-  async makeRequest(
-    method,
-    endpoint = "",
-    data = null,
-    headers = {},
-    params = ""
-  ) {
-    const fullEndpoint = endpoint || this.config.baseURL;
-    const effectiveHeaders = { ...this.config.defaultHeaders, ...headers };
-
-    const debouncedFunc = this.debounceRequest(async () => {
+  async makeRequest(method, endpoint = "", data = null, headers = {}) {
+    try {
       const response = await this.apiClient({
         method,
-        url: fullEndpoint + params,
+        url: endpoint || this.config.baseURL,
         data,
-        headers: effectiveHeaders,
+        headers: { ...this.config.defaultHeaders, ...headers },
       });
       return response.data;
-    });
-
-    try {
-      return await debouncedFunc();
     } catch (error) {
       this.handleErrorResponse(error); // toast + log
 
-      const status = error?.response?.status;
-      const requestMethod = error?.config?.method?.toLowerCase();
-
-      // Preserve prior behavior: swallow 404s on reads so callers can handle
-      // "not found" without a try/catch. Writes still throw.
-      if (status === 404 && requestMethod === "get") {
+      // A 404 on a read is returned rather than thrown, so callers can treat
+      // "not found" as data without a try/catch. Writes always throw.
+      if (error?.response?.status === 404 && method === "get") {
         return error;
       }
       throw error;
     }
   }
 
-  // Specific methods for different HTTP verbs
-  get(endpoint = "", params = "", headers = {}) {
-    if (this.config.tokenKey) {
-      headers = this.buildAuthHeader(this.getToken());
-    }
-
-    return this.makeRequest("get", endpoint, null, headers, params);
+  // `endpoint` is a query string or sub-path appended to baseURL ("?page=2")
+  get(endpoint = "", headers = {}) {
+    return this.makeRequest("get", endpoint, null, headers);
   }
 
   post(endpoint = "", data, headers = {}) {
-    if (this.config.tokenKey) headers = this.buildAuthHeader(this.getToken());
-
     return this.makeRequest("post", endpoint, data, headers);
   }
 
   put(endpoint = "", data, headers = {}) {
-    if (this.config.tokenKey) headers = this.buildAuthHeader(this.getToken());
     return this.makeRequest("put", endpoint, data, headers);
   }
 
   patch(endpoint = "", data, headers = {}) {
-    if (this.config.tokenKey) headers = this.buildAuthHeader(this.getToken());
     return this.makeRequest("patch", endpoint, data, headers);
   }
 
   delete(endpoint = "", headers = {}) {
-    if (this.config.tokenKey) headers = this.buildAuthHeader(this.getToken());
     return this.makeRequest("delete", endpoint, null, headers);
-  }
-
-  // Methods for token management in local storage
-  getToken() {
-    return localStorage.getItem("access_token");
-  }
-
-  setToken(token) {
-    localStorage.setItem(this.config.tokenKey, token);
-  }
-
-  removeToken() {
-    localStorage.removeItem(this.config.tokenKey);
-  }
-
-  // Utility method to format dates
-  formatDate(date) {
-    return new Date(date).toLocaleDateString("en-US");
-  }
-
-  // Utility method to parse JSON safely
-  parseJSON(response) {
-    try {
-      return JSON.parse(response);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  // Utility method to serialize URL parameters
-  serializeParams(params) {
-    return Object.entries(params)
-      .map(
-        ([key, value]) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
-      )
-      .join("&");
-  }
-
-  // Method to check if response status is successful
-  checkStatus(response) {
-    if (response.status >= 200 && response.status < 300) {
-      return response;
-    } else {
-      throw new Error(response.statusText);
-    }
-  }
-
-  // Method to build Authorization header
-  buildAuthHeader(token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-
-  // Debounce utility to prevent rapid firing of requests
-  debounceRequest(func) {
-    let inDebounce;
-    return async (...args) => {
-      clearTimeout(inDebounce);
-      return new Promise((resolve, reject) => {
-        inDebounce = setTimeout(async () => {
-          try {
-            resolve(await func(...args));
-          } catch (error) {
-            reject(error);
-          }
-        }, this.config.debounceDelay);
-      });
-    };
-  }
-
-  // Interceptor for token refresh logic
-  tokenRefreshInterceptor(apiClient, refreshToken) {
-    apiClient.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        const originalRequest = error.config;
-        if (error.response.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
-          // Implement token refresh logic here
-          return apiClient(originalRequest);
-        }
-        return Promise.reject(error);
-      }
-    );
   }
 }

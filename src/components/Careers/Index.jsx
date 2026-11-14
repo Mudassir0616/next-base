@@ -8,6 +8,7 @@ import { CareerApi, CareerApplicationApi, CareerCategoryApi } from "@/api/api";
 import { useSiteSetting } from "@/context/useSiteSettings";
 import { mediaUrl } from "@/utils/functionUtils";
 import { mapCareer } from "@/utils/mappers";
+import { RESUME_FIELD } from "./resumeField";
 
 const ALL_ROLES = "All Roles";
 
@@ -96,15 +97,7 @@ const Careers = () => {
       fullWidth: true,
       xs: 12,
     },
-    {
-      name: "resume",
-      label: "Resume / CV",
-      type: "file",
-      placeholder: "Drop your resume here or browse",
-      helper_text: "PDF, DOC up to 5MB",
-      fullWidth: true,
-      xs: 12,
-    },
+    RESUME_FIELD,
   ];
 
   const handleSubmit = async (values, resetForm) => {

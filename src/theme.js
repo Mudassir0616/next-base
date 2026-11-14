@@ -2,7 +2,7 @@ import { createTheme } from "@mui/material";
 
 // MUI ships its own Roboto-based theme, which ignores the site's stylesheets —
 // every MUI surface (inputs, menus, pagination, dialogs) needs this to match.
-export const FONT_FAMILY = '"Poppins", sans-serif';
+const FONT_FAMILY = '"Poppins", sans-serif';
 
 export const baseTheme = createTheme({
     typography: {

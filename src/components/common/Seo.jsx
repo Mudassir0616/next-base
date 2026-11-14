@@ -1,12 +1,12 @@
 import React from "react";
 import Head from "next/head";
-import { renderHeadTags } from "@/utils/renderHeadTags";
+import { metaKey, renderHeadTags } from "@/utils/renderHeadTags";
+import { useSeoHead } from "@/context/useSeoHead";
 import {
     absoluteUrl,
     canonicalUrl,
     cleanHeadHtml,
     DEFAULT_SEO_IMAGE,
-    definedHeadTags,
     metaDescription,
     metaTitle,
     plainText,
@@ -14,16 +14,21 @@ import {
 } from "@/utils/seo";
 
 /**
- * Head tags for a CMS-driven page.
+ * Every head tag a page ships, from four sources. All of them key their tags
+ * the same way (see `renderHeadTags`), and next/head keeps the last tag per
+ * key, so render order is precedence — lowest first:
  *
- * Whatever the record's own `head` field fills in wins — it is rendered first,
- * and every tag it already defines is skipped below. The rest is derived from
- * the record itself, so a page is never published without a title, a
- * description, a canonical and a social card.
+ *   1. site-wide `global_head` from site settings (via SeoHeadContext)
+ *   2. tags derived from this component's props — title, description,
+ *      canonical, Open Graph, Twitter card
+ *   3. the `/api/head/` record whose target_url is this route (via context)
+ *   4. the record's own `head` field (`cmsHead`)
  *
- * The derived tags carry no `key`, on purpose: next/head only de-duplicates
- * `<meta name>` when the tag is unkeyed, and rendering last is what lets a page
- * override the site-wide `global_head` from _app.
+ * so whatever an editor filled in wins, and a page never ships without a
+ * title, a description, a canonical and a social card. Placeholder tags CMS
+ * records are saved with (`content=" "`) are dropped first, so they never
+ * win. `noindex` is applied after all four: no CMS markup can make a page
+ * that asked not to be indexed indexable.
  *
  * Pass `path` explicitly — `router.asPath` is not reliable while a
  * `fallback: "blocking"` page is being generated.
@@ -40,86 +45,60 @@ const Seo = ({
     cmsHead = null,
     jsonLd = [],
 }) => {
-    const head = cleanHeadHtml(cmsHead);
-    const defined = definedHeadTags(head);
-    const missing = (key) => !defined.has(key);
+    const { route, global } = useSeoHead();
 
     const pageTitle = metaTitle(title);
     const pageDescription = metaDescription(description);
     const pageUrl = canonicalUrl(path);
     const pageImage = absoluteUrl(image) || absoluteUrl(DEFAULT_SEO_IMAGE);
     const imageAlt = plainText(title) || SITE_NAME;
+    const robots = noindex ? "noindex, nofollow" : "index, follow";
 
     const schemas = (Array.isArray(jsonLd) ? jsonLd : [jsonLd]).filter(Boolean);
 
+    const meta = (name, content) =>
+        content ? <meta key={metaKey(name)} name={name} content={content} /> : null;
+    const property = (name, content) =>
+        content ? (
+            <meta key={metaKey(name)} property={name} content={content} />
+        ) : null;
+
+    const derived = [
+        <title key="title">{pageTitle}</title>,
+        meta("description", pageDescription),
+        meta("robots", robots),
+        // a canonical on a noindex page sends search engines mixed signals
+        pageUrl && !noindex ? (
+            <link key="canonical" rel="canonical" href={pageUrl} />
+        ) : null,
+
+        // Open Graph
+        property("og:type", type),
+        property("og:site_name", SITE_NAME),
+        property("og:title", pageTitle),
+        property("og:description", pageDescription),
+        property("og:url", pageUrl),
+        property("og:image", pageImage),
+        property("og:image:alt", pageImage && imageAlt),
+        type === "article" && property("article:published_time", publishedTime),
+        type === "article" &&
+            property("article:modified_time", modifiedTime || publishedTime),
+
+        // Twitter / X card
+        meta("twitter:card", "summary_large_image"),
+        meta("twitter:title", pageTitle),
+        meta("twitter:description", pageDescription),
+        meta("twitter:image", pageImage),
+    ].filter(Boolean);
+
     return (
         <Head>
-            {/* the record's own head first, so the derived tags only fill gaps */}
-            {head ? renderHeadTags(head) : null}
+            {renderHeadTags(cleanHeadHtml(global), "global")}
+            {derived}
+            {renderHeadTags(cleanHeadHtml(route), "route")}
+            {renderHeadTags(cleanHeadHtml(cmsHead), "record")}
 
-            {missing("title") && <title>{pageTitle}</title>}
-
-            {missing("description") && pageDescription && (
-                <meta name="description" content={pageDescription} />
-            )}
-
-            {missing("robots") && (
-                <meta
-                    name="robots"
-                    content={noindex ? "noindex, nofollow" : "index, follow"}
-                />
-            )}
-
-            {missing("canonical") && pageUrl && (
-                <link rel="canonical" href={pageUrl} />
-            )}
-
-            {/* Open Graph */}
-            {missing("og:type") && <meta property="og:type" content={type} />}
-            {missing("og:site_name") && (
-                <meta property="og:site_name" content={SITE_NAME} />
-            )}
-            {missing("og:title") && <meta property="og:title" content={pageTitle} />}
-            {missing("og:description") && pageDescription && (
-                <meta property="og:description" content={pageDescription} />
-            )}
-            {missing("og:url") && pageUrl && (
-                <meta property="og:url" content={pageUrl} />
-            )}
-            {missing("og:image") && pageImage && (
-                <meta property="og:image" content={pageImage} />
-            )}
-            {missing("og:image:alt") && pageImage && (
-                <meta property="og:image:alt" content={imageAlt} />
-            )}
-
-            {type === "article" &&
-                publishedTime &&
-                missing("article:published_time") && (
-                    <meta property="article:published_time" content={publishedTime} />
-                )}
-            {type === "article" &&
-                (modifiedTime || publishedTime) &&
-                missing("article:modified_time") && (
-                    <meta
-                        property="article:modified_time"
-                        content={modifiedTime || publishedTime}
-                    />
-                )}
-
-            {/* Twitter / X card */}
-            {missing("twitter:card") && (
-                <meta name="twitter:card" content="summary_large_image" />
-            )}
-            {missing("twitter:title") && (
-                <meta name="twitter:title" content={pageTitle} />
-            )}
-            {missing("twitter:description") && pageDescription && (
-                <meta name="twitter:description" content={pageDescription} />
-            )}
-            {missing("twitter:image") && pageImage && (
-                <meta name="twitter:image" content={pageImage} />
-            )}
+            {noindex && meta("robots", robots)}
 
             {schemas.map((schema, index) => (
                 <script

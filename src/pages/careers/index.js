@@ -1,10 +1,25 @@
-import Careers from '@/components/Careers/Index'
-import React from 'react'
+import Careers from "@/components/Careers/Index";
+import Seo from "@/components/common/Seo";
+import { seoStaticProps } from "@/utils/functionUtils";
 
-const Index = () => {
+const Index = ({ seo }) => {
     return (
-        <Careers />
-    )
-}
+        <>
+            <Seo
+                title="Careers"
+                description={seo?.description}
+                image={seo?.image}
+                path="/careers"
+            />
 
-export default Index
+            <Careers />
+        </>
+    );
+};
+
+export const getStaticProps = seoStaticProps("/careers", {
+    description: "career_hero_description",
+    image: "career_hero_image",
+});
+
+export default Index;

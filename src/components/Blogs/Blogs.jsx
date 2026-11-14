@@ -6,7 +6,7 @@ import {
   PaginationItem,
 } from "@mui/material";
 import { ChevronLeft, ChevronRight, Tune } from "@mui/icons-material";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BlogCategoryApi, BlogListApi } from "@/api/api";
 import { useRouter } from "next/router";
 import { useSearchParams } from "next/navigation";
@@ -23,14 +23,14 @@ const SORT_OPTIONS = [
   { label: "Oldest first", value: "created_at" },
 ];
 
-const CustomCheckbox = styled(Checkbox)(({ theme }) => ({
+const CustomCheckbox = styled(Checkbox)(() => ({
   "&.Mui-checked": {
     color: "#172846 !important",
   },
 }));
 
 // Custom styled pagination
-const CustomPagination = styled(Pagination)(({ theme }) => ({
+const CustomPagination = styled(Pagination)(() => ({
   "& .MuiPaginationItem-root": {
     color: "#333",
     fontSize: "14px",
@@ -79,8 +79,6 @@ const Blogs = () => {
     totalItems: 0,
   });
 
-  const blogSectionRef = useRef(null);
-
   const fetch_blogs = async (
     category_ids = "",
     s_term = "",
@@ -89,20 +87,18 @@ const Blogs = () => {
   ) => {
     setloading(true);
     try {
-      // Build the query string dynamically based on category & search
-      let query = `?page=${page}&page_size=${PAGE_SIZE}&nested=True&depth=3&order_by=${order_by}`;
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(PAGE_SIZE),
+        nested: "True",
+        depth: "3",
+        order_by,
+      });
 
-      if (category_ids.length > 0) {
-        category_ids?.map((cat) => {
-          query += `&category=${cat}`;
-        });
-      }
-      if (s_term) {
-        // Append the search parameter if it is not blank
-        query += `&title=${s_term}`;
-      }
+      category_ids.forEach((id) => params.append("category", id));
+      if (s_term) params.set("title", s_term);
 
-      const res = await BlogListApi.get(query);
+      const res = await BlogListApi.get(`?${params.toString()}`);
 
       setBlogs(res?.results || []);
       setPagination({
@@ -153,7 +149,12 @@ const Blogs = () => {
     };
   }, [filterOpen, lenisRef]);
 
+  // The URL is the source of truth for filters. Before the router is ready the
+  // query string reads as empty, so fetching then would race an unfiltered
+  // request against the real one.
   useEffect(() => {
+    if (!router.isReady) return;
+
     const q = searchParams.get("q") || "";
     const page = Number(searchParams.get("page")) || 1;
     const categories = searchParams.getAll("category");
@@ -164,7 +165,7 @@ const Blogs = () => {
     setSortBy(order_by);
 
     fetch_blogs(categories, q, page, order_by);
-  }, [searchParams.toString()]);
+  }, [router.isReady, searchParams.toString()]);
 
   // Filters apply straight away — the URL stays the source of truth
   const push_filters = (categories, order_by = sort_by) => {
@@ -259,7 +260,7 @@ const Blogs = () => {
   const range_end = range_start === 0 ? 0 : range_start + blogs.length - 1;
 
   return (
-    <div className="blogs-page" ref={blogSectionRef}>
+    <div className="blogs-page">
       <PageBanner
         title={settings?.our_blog_hero_title || "Insights & Blog"}
         description={

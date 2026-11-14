@@ -1,25 +1,20 @@
 import { BlogListApi } from "@/api/api";
 import React, { useEffect, useState } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
-import { Pagination, Autoplay, Navigation } from "swiper/modules";
+import { Autoplay } from "swiper/modules";
 import BlogCard from "../Blogs/BlogCard";
-("swiper");
 
 const Blogs = () => {
   const [blogs, setBlogs] = useState([]);
-  const [loading, setloading] = useState(false);
 
   const fetchBlogs = async () => {
-    setloading(true);
     try {
       const res = await BlogListApi.get(
-        `?depth=2&nested=Trueorder_by=order_by`,
+        `?depth=2&nested=True&order_by=order_by`,
       );
-      setBlogs(res?.results);
+      setBlogs(res?.results || []);
     } catch (error) {
       console.error("Failed to fetch blog data:", error);
-    } finally {
-      setloading(false);
     }
   };
 
@@ -43,15 +38,16 @@ const Blogs = () => {
 
         <div className="slider">
           <Swiper
-            loop={true}
+            // Swiper needs twice the visible slides to loop; with fewer it
+            // warns and disables looping anyway
+            loop={blogs.length >= 6}
             autoplay={{
               delay: 3000,
               disableOnInteraction: false,
             }}
-            modules={[Navigation, Pagination, Autoplay]}
+            modules={[Autoplay]}
             spaceBetween={15} // spacing between slides
             slidesPerView={2} // default number of slides to show at a time
-            scrollbar={{ draggable: true }} // for draggable scrollbar
             breakpoints={{
               // when the screen is >= 320px (mobile)
               100: {

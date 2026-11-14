@@ -1,29 +1,23 @@
-import { useSiteSetting } from '@/context/useSiteSettings';
-import { Breadcrumbs } from '@mui/material'
-import Link from 'next/link'
-import React from 'react'
+import LegalPage from "@/components/common/LegalPage";
+import Seo from "@/components/common/Seo";
+import { fetchPageSeo, REVALIDATE_SECONDS } from "@/utils/functionUtils";
 
-const Index = () => {
-    const { settings } = useSiteSetting();
-
+const Index = ({ content }) => {
     return (
-        <div className="container">
+        <>
+            <Seo title="Terms & Conditions" description={content} path="/terms-and-conditions" />
+            <LegalPage title="Terms & Conditions" html={content} />
+        </>
+    );
+};
 
-            <Breadcrumbs aria-label="breadcrumb" sx={{ padding: { lg: '15px 0', xs: '10px 0' } }}>
-                <Link underline="hover" color="inherit" href="/">
-                    Home
-                </Link>
-                <p>Terms & Conditions</p>
-            </Breadcrumbs>
+export async function getStaticProps() {
+    const { seoHead, setting } = await fetchPageSeo("/terms-and-conditions");
 
-
-            <div className="my-10">
-                <h1 className='title-color'>Terms & Conditions</h1>
-            </div>
-
-            <div className="terms" dangerouslySetInnerHTML={{ __html: settings?.terms_and_conditions }}></div>
-        </div>
-    )
+    return {
+        props: { seoHead, content: setting.terms_and_conditions || "" },
+        revalidate: REVALIDATE_SECONDS,
+    };
 }
 
-export default Index
+export default Index;

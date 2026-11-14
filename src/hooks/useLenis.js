@@ -12,20 +12,20 @@ const useLenis = () => {
     useEffect(() => {
         const lenis = new Lenis({
             duration: 0,
-            smooth: true,
-            smoothTouch: false,
         });
 
         lenisRef.current = lenis; // store instance
 
+        let frame;
         function raf(time) {
             lenis.raf(time);
-            requestAnimationFrame(raf);
+            frame = requestAnimationFrame(raf);
         }
 
-        requestAnimationFrame(raf);
+        frame = requestAnimationFrame(raf);
 
         return () => {
+            cancelAnimationFrame(frame);
             lenis.destroy();
             lenisRef.current = null;
         };

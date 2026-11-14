@@ -7,13 +7,13 @@ import {
 import Link from "next/link";
 import React from "react";
 import { toast } from "react-toastify";
-import * as Yup from "yup";
 import PageBanner from "../common/PageBanner";
 import GlobalForm from "../common/GlobalForm";
 import JobCard from "./JobCard";
 import { CareerApplicationApi } from "@/api/api";
 import { useSiteSetting } from "@/context/useSiteSettings";
-import moment from "moment";
+import { formatCmsDate } from "@/utils/functionUtils";
+import { RESUME_FIELD } from "./resumeField";
 
 const JobDetails = ({ job, relatedJobs = [] }) => {
   const { settings } = useSiteSetting();
@@ -22,6 +22,8 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
       name: "full_name",
       label: "Full Name",
       type: "text",
+      required: true,
+      validation_message: "Full name is required",
       placeholder: "Your full name",
       fullWidth: true,
       xs: 12,
@@ -30,6 +32,8 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
       name: "email",
       label: "Email Address",
       type: "email",
+      required: true,
+      validation_message: "Email address is required",
       placeholder: "your@email.com",
       fullWidth: true,
       xs: 12,
@@ -51,25 +55,11 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
       xs: 12,
     },
     {
-      name: "resume",
-      label: "Resume / CV",
-      type: "file",
-      placeholder: "Drop your resume here or browse",
-      helper_text: "PDF, DOC up to 5MB",
-      fullWidth: true,
-      xs: 12,
+      ...RESUME_FIELD,
+      required: true,
+      validation_message: "Please attach your resume",
     },
   ];
-
-  // The design shows no required markers here, so the rules live in a schema
-  // instead of `required` on each field.
-  const custom_schema = Yup.object().shape({
-    full_name: Yup.string().required("Full name is required"),
-    email: Yup.string()
-      .email("Invalid email format")
-      .required("Email address is required"),
-    resume: Yup.mixed().required("Please attach your resume"),
-  });
 
   const handleSubmit = async (values, resetForm) => {
     const payload = new FormData();
@@ -107,7 +97,7 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
           </span>
           {job?.posted && (
             <span>
-              <CalendarTodayOutlined /> Posted {moment(job.posted).fromNow()}
+              <CalendarTodayOutlined /> Posted {formatCmsDate(job.posted)}
             </span>
           )}
         </div>
@@ -174,18 +164,30 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
         </div>
 
         <div className="form-side">
-          <div className="application-form">
-            <h3>Apply for this Role</h3>
-            <p className="form-note">Fill in your details below</p>
+          {job?.is_active ? (
+            <div className="application-form">
+              <h3>Apply for this Role</h3>
+              <p className="form-note">Fill in your details below</p>
 
-            <GlobalForm
-              form_config={form_config}
-              custom_schema={custom_schema}
-              on_Submit={handleSubmit}
-              btnClassName="submit-btn"
-              btnText="Submit Application"
-            />
-          </div>
+              <GlobalForm
+                form_config={form_config}
+                on_Submit={handleSubmit}
+                btnClassName="submit-btn"
+                btnText="Submit Application"
+              />
+            </div>
+          ) : (
+            <div className="application-form">
+              <h3>This role is closed</h3>
+              <p className="form-note">
+                We&apos;re no longer accepting applications for this position.
+              </p>
+
+              <Link href="/careers" className="submit-btn">
+                See open positions
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 

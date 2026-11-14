@@ -143,40 +143,6 @@ export const cleanHeadHtml = (html) => {
         .trim();
 };
 
-/**
- * Which tags a CMS `head` string already fills in, as lowercase keys
- * ("title", "description", "og:image", "canonical", ...).
- *
- * Records are routinely saved with placeholder tags (`content=" "`), so a blank
- * value does not count as defined — the derived tag is used instead.
- */
-export const definedHeadTags = (html) => {
-    const defined = new Set();
-    if (!html) return defined;
-
-    const source = String(html);
-
-    if (/<title[^>]*>\s*[^<\s][\s\S]*?<\/title>/i.test(source)) {
-        defined.add("title");
-    }
-
-    for (const tag of source.match(/<meta\b[^>]*>/gi) || []) {
-        const key = attribute(tag, "name") || attribute(tag, "property");
-        if (key && attribute(tag, "content")) defined.add(key.toLowerCase());
-    }
-
-    for (const tag of source.match(/<link\b[^>]*>/gi) || []) {
-        if (
-            attribute(tag, "rel").toLowerCase() === "canonical" &&
-            attribute(tag, "href")
-        ) {
-            defined.add("canonical");
-        }
-    }
-
-    return defined;
-};
-
 /* ------------------------------------------------------------------ */
 /* JSON-LD                                                             */
 /* ------------------------------------------------------------------ */
@@ -221,19 +187,6 @@ export const articleSchema = ({
     ...(modified || published ? { dateModified: modified || published } : {}),
     author: organizationSchema(),
     publisher: organizationSchema(),
-});
-
-export const serviceSchema = ({ name, description, image, path }) => ({
-    "@context": "https://schema.org",
-    "@type": "Service",
-    "@id": canonicalUrl(path),
-    name: plainText(name),
-    serviceType: plainText(name),
-    description: metaDescription(description),
-    ...(image ? { image: absoluteUrl(image) } : {}),
-    url: canonicalUrl(path),
-    provider: organizationSchema(),
-    areaServed: { "@type": "Country", name: site.country.name },
 });
 
 // "Full-time" -> "FULL_TIME"; schema.org spells a contract role CONTRACTOR.

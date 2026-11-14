@@ -4,7 +4,6 @@ import { Autoplay, EffectFade } from "swiper/modules";
 import "swiper/css/effect-fade";
 import { useSiteSetting } from "@/context/useSiteSettings";
 import { highlight, mediaUrl } from "@/utils/functionUtils";
-import { East } from "@mui/icons-material";
 
 const HeroBanner = () => {
   const router = useRouter();
@@ -72,16 +71,9 @@ const HeroBanner = () => {
           )}
 
           <div className="actions">
-            <button
-              onClick={() => router.push("/expertise")}
-              className="white-cta"
-            >
-              Explore Our Expertise <East />
-            </button>
-
             <button onClick={() => router.push("/contact")} className="cta-btn">
               <div className="icon-container">
-                <img src="/icons/call.svg" />
+                <img src="/icons/call.svg" alt="" />
               </div>
               Talk to Our Team
             </button>

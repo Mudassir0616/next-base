@@ -1,10 +1,10 @@
 import BlogDetails from '@/components/Blogs/BlogDetails';
 import Seo from '@/components/common/Seo';
-import { fetchApi } from '@/utils/functionUtils'
+import { fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from '@/utils/functionUtils'
 import { articleSchema, breadcrumbSchema } from '@/utils/seo'
 import React from 'react'
 
-const Index = ({ data, error }) => {
+const Index = ({ data }) => {
     const path = `/blogs/${data?.slug}`;
     const description = data?.sub_title || data?.featured_text || data?.text;
 
@@ -53,24 +53,22 @@ export async function getStaticPaths() {
     };
 }
 
-// For each slug, load any needed data
-export async function getStaticProps({ params, locale }) {
+export async function getStaticProps({ params }) {
     const res = await fetchApi(
-        `/api/blog/?slug=${params.slug}&depth=3&nested=True`,
+        `/api/blog/?slug=${encodeURIComponent(params.slug)}&depth=3&nested=True`,
     );
 
     const data = res?.results?.[0] || null;
 
     if (!data) {
-        return { notFound: true, revalidate: 1 };
+        return { notFound: true, revalidate: REVALIDATE_SECONDS };
     }
 
+    const { seoHead } = await fetchPageSeo(`/blogs/${data.slug}`);
+
     return {
-        props: {
-            data,
-            error: null,
-        },
-        revalidate: 1,
+        props: { data, seoHead },
+        revalidate: REVALIDATE_SECONDS,
     };
 }
 

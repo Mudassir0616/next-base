@@ -1,17 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { East } from "@mui/icons-material";
 import { useSiteSetting } from "@/context/useSiteSettings";
 import { highlight } from "@/utils/functionUtils";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const AboutUs = () => {
-  const { settings } = useSiteSetting();
-
-  // The step ribbon is static in the design; only the copy beside it is CMS driven.
-  const steps = [
+// The step ribbon is static in the design; only the copy beside it is CMS
+// driven. Module scope, so the animation effect below runs once instead of
+// being torn down and rebuilt on every render.
+const STEPS = [
     {
       title: "ADVISE",
       description:
@@ -42,15 +40,16 @@ const AboutUs = () => {
         "Continuously enhance business performance through insights, process improvement, technology and operational excellence.",
       icon: "/icons/improvments.svg",
     },
-  ];
+];
 
-  const process_ref = React.useRef([]);
-  const line_ref = React.useRef([]);
-  const container_ref = React.useRef(null);
+const AboutUs = () => {
+  const { settings } = useSiteSetting();
+
+  const process_ref = useRef([]);
+  const line_ref = useRef([]);
+  const container_ref = useRef(null);
 
   useEffect(() => {
-    if (!steps?.length) return;
-
     const ctx = gsap.context(() => {
       gsap.fromTo(
         process_ref.current,
@@ -93,7 +92,7 @@ const AboutUs = () => {
     }, container_ref);
 
     return () => ctx.revert();
-  }, [steps]);
+  }, []);
 
   return (
     <section className="container" ref={container_ref}>
@@ -113,7 +112,7 @@ const AboutUs = () => {
         </div>
 
         <div className="process">
-          {steps?.map((step_item, index) => (
+          {STEPS.map((step_item, index) => (
             <div
               className="timeline_step"
               key={index}
@@ -131,7 +130,7 @@ const AboutUs = () => {
                 ></p>
               </div>
 
-              {index < steps?.length - 1 && (
+              {index < STEPS.length - 1 && (
                 <div
                   className="vertical_line"
                   ref={(el) => (line_ref.current[index] = el)}

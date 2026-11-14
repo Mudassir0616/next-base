@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Formik, Form, Field } from "formik";
 import * as Yup from "yup";
 import {
@@ -8,6 +8,7 @@ import {
   Chip,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   Grid,
   IconButton,
   InputAdornment,
@@ -22,8 +23,13 @@ import {
   TextField,
   ThemeProvider,
   createTheme,
+  useTheme,
 } from "@mui/material";
-import { Visibility, VisibilityOff } from "@mui/icons-material";
+import {
+  CloudUploadOutlined,
+  Visibility,
+  VisibilityOff,
+} from "@mui/icons-material";
 import {
   DatePicker,
   DateTimePicker,
@@ -34,37 +40,49 @@ import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 import { useDropzone } from "react-dropzone";
 import moment from "moment";
 
-const theme = createTheme({
+/*
+ * Schema-driven form. Each `form_config` entry describes one field:
+ *
+ *   { name, label, type, required, validation_message, placeholder,
+ *     helper_text, options, rows, xs/sm/md/lg, ... }
+ *
+ * Types: text (default), email, tel, url, number, password (+show_password),
+ * select, radio, checkbox, switch, date, time, date-time, file, image,
+ * multi-select-checkbox, multi-select-dropdown, chips, slider, rating, hidden.
+ *
+ * `file`/`image` also take `accept` (a react-dropzone accept map) and
+ * `max_size` (bytes); both are enforced by validation, so a rejected file
+ * shows an error instead of silently not attaching.
+ *
+ * `on_Submit(values, resetForm)` may be async. It is awaited — the submit
+ * button stays disabled meanwhile — and a throw is caught here: APIBase has
+ * already toasted the error, so the form just stays filled in for a retry.
+ */
+
+// Field styling layered on top of the app theme (src/theme.js) — never in
+// place of it, or forms lose the site font and the raised zIndex scale that
+// keeps their menus above the fixed navbar.
+const FORM_THEME_OVERRIDES = {
   components: {
     MuiTextField: {
       styleOverrides: {
         root: {
-          // This affects the root container of the TextField
-          // Add your custom global styling here
-          // For example, a global light-gray background and rounded corners:
-
           borderRadius: "4px",
-          // Add spacing or margins if desired
-          // marginBottom: "16px",
         },
       },
     },
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          // This targets the actual input element inside Outlined variants.
-          // You can define border styling, focus states, etc.
           "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-            borderColor: "#EDEDED", // Example focus color
+            borderColor: "#EDEDED",
           },
           ".MuiOutlinedInput-notchedOutline": {
-            borderColor: "#EDEDED", // Default border color
+            borderColor: "#EDEDED",
           },
         },
         input: {
-          // This targets the text inside the input
           padding: "10px",
-          // Change font or color if you want:
           fontSize: "1rem",
           backgroundColor: "white",
           color: "#292929",
@@ -74,7 +92,6 @@ const theme = createTheme({
     MuiFilledInput: {
       styleOverrides: {
         root: {
-          // For filled input variants if you use them
           backgroundColor: "white",
           borderRadius: "4px",
           "&.Mui-focused": {
@@ -90,7 +107,6 @@ const theme = createTheme({
     MuiInputBase: {
       styleOverrides: {
         root: {
-          // This can apply to all base input styles, including select, etc.
           padding: 0,
           fontSize: "1rem",
           backgroundColor: "white",
@@ -101,23 +117,21 @@ const theme = createTheme({
     MuiSelect: {
       styleOverrides: {
         root: {
-          padding: "10px !important", // Ensures the select field has 0 padding
+          padding: "10px !important",
           backgroundColor: "#292929",
           borderRadius: "4px",
         },
         select: {
-          padding: "10px !important", // Ensures no extra padding inside the select field
+          padding: "10px !important",
         },
         icon: {
           color: "#333",
         },
       },
     },
-
     MuiCheckbox: {
       styleOverrides: {
         root: {
-          // Style checkboxes globally
           color: "#3f51b5",
           "&.Mui-checked": {
             color: "#3f51b5",
@@ -128,7 +142,6 @@ const theme = createTheme({
     MuiRadio: {
       styleOverrides: {
         root: {
-          // Style radio buttons globally
           color: "#3f51b5",
           "&.Mui-checked": {
             color: "#3f51b5",
@@ -139,7 +152,6 @@ const theme = createTheme({
     MuiSwitch: {
       styleOverrides: {
         switchBase: {
-          // Style switches globally
           color: "#999",
           "&.Mui-checked": {
             color: "#3f51b5",
@@ -156,21 +168,17 @@ const theme = createTheme({
     MuiAutocomplete: {
       styleOverrides: {
         root: {
-          // This targets the root element of the Autocomplete
-          // and from there, we can nest selectors to target inner elements.
           "& .MuiAutocomplete-tag": {
-            // This specifically targets the chips inside the Autocomplete.
-            backgroundColor: "#00000", // Dark background for the chips
-            borderRadius: "5px", // Rounded corners
-            border: "1px solid #777777", // A subtle border
-            color: "#eeeeee", // Light text for readability against dark background
-            // You can also target inner parts of the chip:
+            backgroundColor: "#000000",
+            borderRadius: "5px",
+            border: "1px solid #777777",
+            color: "#eeeeee",
             "& .MuiChip-label": {
-              padding: "0 8px", // Adjust spacing inside the label
-              fontSize: "0.9rem", // Slightly adjust font size if desired
+              padding: "0 8px",
+              fontSize: "0.9rem",
             },
             "& .MuiChip-deleteIcon": {
-              color: "#eeeeee", // Make the delete icon match the text color
+              color: "#eeeeee",
             },
           },
         },
@@ -183,9 +191,261 @@ const theme = createTheme({
         },
       },
     },
-    // Add more overrides as needed for other input types
   },
-});
+};
+
+// Digits with the separators people actually type: "+91 97693 95503",
+// "+1 (555) 000-0000". 7–15 digits covers national and E.164 numbers.
+const PHONE_PATTERN = /^\+?[\d\s().-]+$/;
+const isPhone = (value) => {
+  if (!value) return true;
+  const digits = String(value).replace(/\D/g, "");
+  return PHONE_PATTERN.test(value) && digits.length >= 7 && digits.length <= 15;
+};
+
+const formatBytes = (bytes) =>
+  bytes >= 1024 * 1024
+    ? `${Math.round(bytes / (1024 * 1024))}MB`
+    : `${Math.round(bytes / 1024)}KB`;
+
+// ".pdf, .doc, .docx" from a react-dropzone accept map
+const acceptedExtensions = (accept) =>
+  Object.values(accept || {})
+    .flat()
+    .map((extension) => extension.toLowerCase());
+
+// Types whose control has no helper-text slot of its own, so `helper_text` is
+// rendered under them. TextField types use TextField's `helperText`, and the
+// dropzones print it inside the drop area.
+const OWN_HELPER_TEXT = new Set([
+  "radio",
+  "checkbox",
+  "switch",
+  "date",
+  "time",
+  "date-time",
+  "multi-select-checkbox",
+  "multi-select-dropdown",
+  "chips",
+  "slider",
+  "rating",
+]);
+
+// "" from an empty number input means "no value", not NaN
+const emptyToUndefined = (value, original) =>
+  original === "" || original === null ? undefined : value;
+
+const fieldSchema = (field) => {
+  const message =
+    field.validation_message || `${field.label || field.name} is required`;
+  const required = Boolean(field.required);
+
+  const withRange = (schema) => {
+    let ranged = schema;
+    if (field.min !== undefined) {
+      ranged = ranged.min(field.min, `Value must be at least ${field.min}`);
+    }
+    if (field.max !== undefined) {
+      ranged = ranged.max(field.max, `Value must be at most ${field.max}`);
+    }
+    return ranged;
+  };
+
+  switch (field.type) {
+    case "number":
+    case "slider":
+    case "rating": {
+      const schema = withRange(
+        Yup.number().typeError("Enter a number").transform(emptyToUndefined),
+      );
+      return required ? schema.required(message) : schema.nullable();
+    }
+
+    case "email": {
+      const schema = Yup.string().email("Invalid email format");
+      return required ? schema.required(message) : schema;
+    }
+
+    case "tel": {
+      const schema = Yup.string().test(
+        "phone",
+        "Invalid phone number",
+        isPhone,
+      );
+      return required ? schema.required(message) : schema;
+    }
+
+    case "url": {
+      const schema = Yup.string().url("Invalid URL");
+      return required ? schema.required(message) : schema;
+    }
+
+    case "date":
+    case "time":
+    case "date-time": {
+      let schema = Yup.date().typeError("Invalid date").nullable();
+      if (field.min_date) {
+        const minDate = new Date(field.min_date);
+        schema = schema.min(
+          minDate,
+          `Date must be on or after ${minDate.toLocaleDateString()}`,
+        );
+      }
+      return required ? schema.required(message) : schema;
+    }
+
+    case "checkbox":
+      return required
+        ? Yup.boolean().oneOf([true], message)
+        : Yup.boolean();
+
+    case "switch":
+      return Yup.boolean();
+
+    case "file":
+    case "image": {
+      const extensions = acceptedExtensions(field.accept);
+      let schema = Yup.mixed().nullable();
+
+      if (extensions.length) {
+        schema = schema.test(
+          "file-type",
+          `Accepted formats: ${extensions.join(", ")}`,
+          (file) =>
+            !file?.name ||
+            extensions.some((extension) =>
+              file.name.toLowerCase().endsWith(extension),
+            ),
+        );
+      }
+      if (field.max_size) {
+        schema = schema.test(
+          "file-size",
+          `File must be ${formatBytes(field.max_size)} or smaller`,
+          (file) => !file?.size || file.size <= field.max_size,
+        );
+      }
+      return required ? schema.required(message) : schema;
+    }
+
+    case "multi-select-dropdown":
+    case "multi-select-checkbox":
+    case "chips": {
+      let schema = Yup.array().of(Yup.string());
+      if (field.max_items) {
+        schema = schema.max(
+          field.max_items,
+          `You can add up to ${field.max_items} items`,
+        );
+      }
+      return required ? schema.min(1, message).required(message) : schema;
+    }
+
+    default: {
+      let schema = Yup.string();
+      if (field.pattern) {
+        schema = schema.matches(new RegExp(field.pattern), {
+          message: field.pattern_message || "Invalid format",
+          excludeEmptyString: true,
+        });
+      }
+      return required ? schema.required(message) : schema;
+    }
+  }
+};
+
+const initialValue = (field) => {
+  switch (field.type) {
+    case "date":
+      return field.default_date || "";
+    case "multi-select-checkbox":
+    case "multi-select-dropdown":
+    case "chips":
+      return [];
+    case "checkbox":
+    case "switch":
+      return false;
+    case "slider":
+      return field.min ?? 0;
+    case "rating":
+    case "file":
+    case "image":
+      return null;
+    default:
+      return "";
+  }
+};
+
+// Dropzones live outside GlobalForm: a component defined inside another's
+// render is a new type on every render, so it would remount (and lose its
+// state) on every keystroke anywhere in the form.
+const FileUpload = ({ field, form, input }) => {
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: input.accept,
+    multiple: false,
+    // a rejected file is still stored, so validation can say why
+    onDrop: (accepted, rejected) => {
+      const file = accepted[0] || rejected[0]?.file || null;
+      form.setFieldValue(field.name, file);
+      form.setFieldTouched(field.name, true, false);
+    },
+  });
+
+  return (
+    <div {...getRootProps({ className: input.className ?? "dropzone" })}>
+      <input {...getInputProps()} />
+      <CloudUploadOutlined />
+      <p>{field.value?.name || input.placeholder || "Upload File"}</p>
+      {input.helper_text && (
+        <span className="helper-text">{input.helper_text}</span>
+      )}
+    </div>
+  );
+};
+
+const ImageUpload = ({ field, form, input }) => {
+  const preview = useMemo(
+    () =>
+      field.value instanceof Blob ? URL.createObjectURL(field.value) : null,
+    [field.value],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: input.accept || { "image/*": [] },
+    multiple: false,
+    onDrop: (accepted, rejected) => {
+      const file = accepted[0] || rejected[0]?.file || null;
+      form.setFieldValue(field.name, file);
+      form.setFieldTouched(field.name, true, false);
+    },
+  });
+
+  return (
+    <div {...getRootProps({ className: input.className ?? "dropzone" })}>
+      <input {...getInputProps()} />
+      {preview ? (
+        <div className="img-container">
+          <img src={preview} alt="Preview" />
+          <p>{field.value?.name}</p>
+        </div>
+      ) : (
+        <div className="upload">
+          <CloudUploadOutlined />
+          <p>{input.placeholder || "Upload Image"}</p>
+          {input.helper_text && (
+            <span className="helper-text">{input.helper_text}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const GlobalForm = ({
   form_config,
@@ -198,483 +458,369 @@ const GlobalForm = ({
   btnClassName = "",
   showTheme = true,
 }) => {
-  const [showPassword, setShowPassword] = useState(false);
+  // per password field, so revealing one doesn't reveal the others
+  const [visiblePasswords, setVisiblePasswords] = useState({});
 
-  const validationSchema = Yup.object().shape(
-    form_config.reduce((schema, field) => {
-      if (field?.required) {
-        if (field.type === "select" || field.type === "radio") {
-          schema[field.name] = Yup.string().required(field.validation_message);
-        } else if (field.type === "number") {
-          let numberSchema = Yup.number().required(field.validation_message);
-          if (field.min !== undefined) {
-            numberSchema = numberSchema.min(
-              field.min,
-              `Value must be at least ${field.min}`
-            );
-          }
-          if (field.max !== undefined) {
-            numberSchema = numberSchema.max(
-              field.max,
-              `Value must be at most ${field.max}`
-            );
-          }
-          schema[field.name] = numberSchema;
-        } else if (field.type === "text") {
-          let stringSchema = Yup.string().required(field.validation_message);
-          if (field.pattern) {
-            stringSchema = stringSchema.matches(
-              new RegExp(field.pattern),
-              field.pattern_message || "Invalid format"
-            );
-          }
-          schema[field.name] = stringSchema;
-        } else if (field.type === "url") {
-          schema[field.name] = Yup.string()
-            .url("Invalid URL")
-            .required(field.validation_message);
-        } else if (field.type === "tel") {
-          schema[field.name] = Yup.string()
-            .matches(/^[0-9]{10}$/, "Invalid phone number")
-            .required(field.validation_message);
-        } else if (field.type === "email") {
-          schema[field.name] = Yup.string()
-            .email("Invalid email format")
-            .required(field.validation_message);
-        } else if (field.type === "date") {
-          let dateSchema = Yup.date().required(field.validation_message);
-          if (field.min_date) {
-            const minDate = new Date(field.min_date);
-            dateSchema = dateSchema.min(
-              minDate,
-              `Date must be at least ${minDate.toLocaleDateString()}`
-            );
-          }
-          schema[field.name] = dateSchema;
-        } else if (field.type === "checkbox") {
-          schema[field.name] = Yup.boolean().oneOf(
-            [true],
-            field.validation_message
-          );
-        } else if (field.type === "switch") {
-          schema[field.name] = Yup.boolean().required(field.validation_message);
-        } else if (field.type === "file") {
-          schema[field.name] = Yup.mixed().required(field.validation_message);
-        } else if (field.type === "password") {
-          schema[field.name] = Yup.string().required("Password is required");
-          // .min(8, "Password must be at least 8 characters long")
-          // .matches(
-          //   /[a-z]/,
-          //   "Password must contain at least one lowercase letter"
-          // )
-          // .matches(
-          //   /[A-Z]/,
-          //   "Password must contain at least one uppercase letter"
-          // )
-          // .matches(/[0-9]/, "Password must contain at least one number")
-          // .matches(
-          //   /[@$!%*?&#]/,
-          //   "Password must contain at least one special character"
-          // );
-        } else if (field.type === "image") {
-          schema[field.name] = Yup.mixed().required(field.validation_message);
-        } else if (field.type === "multi-select-dropdown") {
-          schema[field.name] = Yup.array()
-            .of(Yup.string())
-            .min(1, field.validation_message)
-            .required(field.validation_message);
-        } else if (field.type === "multi-select-checkbox") {
-          schema[field.name] = Yup.array()
-            .of(Yup.string())
-            .min(1, field.validation_message)
-            .required(field.validation_message);
-        } else if (field.type === "chips") {
-          let arraySchema = Yup.array()
-            .of(Yup.string())
-            .min(1, field.validation_message)
-            .required(field.validation_message);
-          if (field.max_items) {
-            arraySchema = arraySchema.max(
-              field.max_items,
-              `You can add up to ${field.max_items} names`
-            );
-          }
-          schema[field.name] = arraySchema;
-        } else if (field.type === "slider") {
-          let sliderSchema = Yup.number().required(field.validation_message);
-          if (field.min !== undefined) {
-            sliderSchema = sliderSchema.min(
-              field.min,
-              `Value must be at least ${field.min}`
-            );
-          }
-          if (field.max !== undefined) {
-            sliderSchema = sliderSchema.max(
-              field.max,
-              `Value must be at most ${field.max}`
-            );
-          }
-          schema[field.name] = sliderSchema;
-        } else if (field.type === "rating") {
-          schema[field.name] = Yup.number().required(field.validation_message);
-        } else {
-          schema[field.name] = Yup.string().required(field.validation_message);
-        }
-      }
-
-      return schema;
-    }, {})
+  const outerTheme = useTheme();
+  const formTheme = useMemo(
+    () => createTheme(outerTheme, FORM_THEME_OVERRIDES),
+    [outerTheme],
   );
 
-  const initialValues = form_config.reduce((values, field) => {
-    if (field.type === "date") {
-      values[field.name] = field.default_date ? field.default_date : "";
-    } else if (
-      field.type === "multi-select-checkbox" ||
-      field.type === "multi-select-dropdown" ||
-      field.type === "chips"
-    ) {
-      values[field.name] = [];
-    } else {
-      values[field.name] = "";
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape(
+        Object.fromEntries(
+          form_config.map((field) => [field.name, fieldSchema(field)]),
+        ),
+      ),
+    [form_config],
+  );
+
+  const initialValues = Object.fromEntries(
+    form_config.map((field) => [field.name, initialValue(field)]),
+  );
+
+  const handleSubmit = async (values, { resetForm }) => {
+    try {
+      await on_Submit(values, resetForm);
+    } catch (error) {
+      // APIBase has already told the visitor what went wrong
+      console.error("Form submission failed:", error?.message || error);
     }
-    return values;
-  }, {});
-
-  const ImageUpload = ({ field, form, className }) => {
-    const onDrop = (acceptedFiles) => {
-      form.setFieldValue(field.name, URL.createObjectURL(acceptedFiles[0]));
-    };
-
-    const { getRootProps, getInputProps } = useDropzone({ onDrop });
-
-    return (
-      <div {...getRootProps({ className: className ?? "dropzone" })}>
-        <input {...getInputProps()} />
-        {field.value ? (
-          <div className="img-container">
-            <img
-              //   src={URL.createObjectURL(field.value)}
-              src={field.value}
-              alt="Preview"
-            />
-            <p>{field.value.name}</p>
-          </div>
-        ) : (
-          <div className="upload">
-            <div className="icon-container">
-              <img src="/icons/upload.svg" alt="" />
-            </div>
-            <p>Upload Image</p>
-          </div>
-        )}
-      </div>
-    );
   };
 
-  const FileUpload = ({ field, form }) => {
-    const onDrop = (acceptedFiles) => {
-      form.setFieldValue(field.name, acceptedFiles[0]);
-    };
+  const form = (
+    <Formik
+      initialValues={editingValues ? editingValues : initialValues}
+      validationSchema={custom_schema ? custom_schema : validationSchema}
+      onSubmit={handleSubmit}
+    >
+      {({ errors, touched, setFieldValue, values, isSubmitting }) => {
+        const hasError = (name) => Boolean(touched[name] && errors[name]);
 
-    const { getRootProps, getInputProps } = useDropzone({ onDrop });
+        const errorText = (name) =>
+          hasError(name) ? <div className="error">{errors[name]}</div> : null;
 
-    return (
-      <div {...getRootProps({ className: "dropzone" })}>
-        <input {...getInputProps()} />
-        {field.value ? (
-          <div>
-            <p>{field.value.name}</p>
-          </div>
-        ) : (
-          <p>Upload File</p>
-        )}
-      </div>
-    );
-  };
+        const helperText = (input) =>
+          input.helper_text && !hasError(input.name) ? (
+            <FormHelperText>{input.helper_text}</FormHelperText>
+          ) : null;
 
-  return (
-    <ThemeProvider theme={showTheme ? theme : createTheme()}>
-      <Formik
-        initialValues={editingValues ? editingValues : initialValues}
-        validationSchema={custom_schema ? custom_schema : validationSchema}
-        onSubmit={(values, { resetForm }) => {
-          on_Submit(values, resetForm); // Your custom submit logic
-        }}
-      >
-        {({ errors, touched, setFieldValue, values }) => {
-          // console.log("form values", values, editingValues);
-          return (
-            <Form>
-              <Grid container spacing={2}>
-                {form_config?.map((input) => {
-                  const handleClickShowPassword = () =>
-                    setShowPassword(!showPassword);
-                  const handleMouseDownPassword = (event) => {
-                    event.preventDefault();
-                  };
+        const pickerSlotProps = (input) => ({
+          textField: {
+            fullWidth: input.fullWidth,
+            error: hasError(input.name),
+            placeholder: input.placeholder,
+          },
+        });
 
-                  return (
-                    <Grid
-                      item
-                      xs={input.xs}
-                      sm={input.sm}
-                      md={input.md}
-                      lg={input.lg}
-                      key={input.name}
-                      className="global-form"
-                    >
-                      {input.type === "radio" ? (
-                        <FormControl
-                          component="fieldset"
-                          error={
-                            touched[input.name] && Boolean(errors[input.name])
-                          }
-                        >
-                          <label>{input.label}</label>
-                          <RadioGroup
-                            row
-                            name={input.name}
-                            value={values[input.name]}
-                            onChange={(event) =>
-                              setFieldValue(input.name, event.target.value)
-                            }
-                          >
-                            {input.options.map((option) => (
-                              <FormControlLabel
-                                key={option.value}
-                                value={option.value}
-                                control={<Radio />}
-                                label={option.label}
-                              />
-                            ))}
-                          </RadioGroup>
-                          {touched[input.name] &&
-                            Boolean(errors[input.name]) && (
-                              <div className="error">{errors[input.name]}</div>
-                            )}
-                        </FormControl>
-                      ) : input.type === "checkbox" ? (
-                        <FormControl
-                          fullWidth={input.fullWidth}
-                          error={
-                            touched[input.name] && Boolean(errors[input.name])
-                          }
-                        >
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={values[input.name]}
-                                onChange={(event) =>
-                                  setFieldValue(
-                                    input.name,
-                                    event.target.checked
-                                  )
-                                }
-                              />
-                            }
-                            label={input.label}
-                          />
-                          {touched[input.name] && errors[input.name] && (
-                            <div className="error">{errors[input.name]}</div>
-                          )}
-                        </FormControl>
-                      ) : input.type === "switch" ? (
-                        <FormControl
-                          fullWidth={input.fullWidth}
-                          error={
-                            touched[input.name] && Boolean(errors[input.name])
-                          }
-                        >
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={values[input.name]}
-                                onChange={(event) =>
-                                  setFieldValue(
-                                    input.name,
-                                    event.target.checked
-                                  )
-                                }
-                              />
-                            }
-                            label={input.label}
-                          />
-                          {touched[input.name] && errors[input.name] && (
-                            <div className="error">{errors[input.name]}</div>
-                          )}
-                        </FormControl>
-                      ) : input.type === "date" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <LocalizationProvider
-                            dateAdapter={AdapterDateFns}
-                            key={input.name}
-                          >
-                            <Field name={input.name}>
-                              {({ field }) => (
-                                <>
-                                  <label>{input.label}</label>
+        const renderField = (input) => {
+          switch (input.type) {
+            case "radio":
+              return (
+                <FormControl component="fieldset" error={hasError(input.name)}>
+                  <label>{input.label}</label>
+                  <RadioGroup
+                    row
+                    name={input.name}
+                    value={values[input.name]}
+                    onChange={(event) =>
+                      setFieldValue(input.name, event.target.value)
+                    }
+                  >
+                    {input.options.map((option) => (
+                      <FormControlLabel
+                        key={option.value}
+                        value={option.value}
+                        control={<Radio />}
+                        label={option.label}
+                      />
+                    ))}
+                  </RadioGroup>
+                  {errorText(input.name)}
+                </FormControl>
+              );
 
-                                  <DatePicker
-                                    {...field}
-                                    value={
-                                      values[input.name]
-                                        ? new Date(values[input.name]) // Convert string to Date
-                                        : null // Handle undefined or null values
-                                    }
-                                    minDate={
-                                      input.min_date
-                                        ? input.min_date
-                                        : undefined
-                                    }
-                                    onChange={(date) => {
-                                      setFieldValue(
-                                        input.name,
-                                        moment(date).format("YYYY-MM-DD")
-                                      );
-                                    }}
-                                    renderInput={(params) => (
-                                      <TextField
-                                        {...params}
-                                        InputLabelProps={{
-                                          shrink: input.shrink,
-                                        }}
-                                        error={
-                                          touched[input.name] &&
-                                          Boolean(errors[input.name])
-                                        }
-                                        helperText={
-                                          touched[input.name] &&
-                                          errors[input.name]
-                                        }
-                                      />
-                                    )}
-                                  />
-                                </>
+            case "checkbox":
+            case "switch": {
+              const Control = input.type === "checkbox" ? Checkbox : Switch;
+              return (
+                <FormControl
+                  fullWidth={input.fullWidth}
+                  error={hasError(input.name)}
+                >
+                  <FormControlLabel
+                    control={
+                      <Control
+                        checked={Boolean(values[input.name])}
+                        onChange={(event) =>
+                          setFieldValue(input.name, event.target.checked)
+                        }
+                      />
+                    }
+                    label={input.label}
+                  />
+                  {errorText(input.name)}
+                </FormControl>
+              );
+            }
+
+            case "date":
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <DatePicker
+                      value={
+                        values[input.name] ? new Date(values[input.name]) : null
+                      }
+                      minDate={
+                        input.min_date ? new Date(input.min_date) : undefined
+                      }
+                      onChange={(date) =>
+                        setFieldValue(
+                          input.name,
+                          date ? moment(date).format("YYYY-MM-DD") : "",
+                        )
+                      }
+                      slotProps={pickerSlotProps(input)}
+                    />
+                  </LocalizationProvider>
+                  {errorText(input.name)}
+                </FormControl>
+              );
+
+            case "time":
+            case "date-time": {
+              const Picker = input.type === "time" ? TimePicker : DateTimePicker;
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <Picker
+                      value={
+                        values[input.name] ? new Date(values[input.name]) : null
+                      }
+                      onChange={(value) =>
+                        setFieldValue(
+                          input.name,
+                          value
+                            ? moment(value).format("YYYY-MM-DD HH:mm:ss Z")
+                            : "",
+                        )
+                      }
+                      slotProps={pickerSlotProps(input)}
+                    />
+                  </LocalizationProvider>
+                  {errorText(input.name)}
+                </FormControl>
+              );
+            }
+
+            case "image":
+            case "file": {
+              const Upload = input.type === "image" ? ImageUpload : FileUpload;
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <Field name={input.name}>
+                    {({ field, form: formik }) => (
+                      <Upload field={field} form={formik} input={input} />
+                    )}
+                  </Field>
+                  {errorText(input.name)}
+                </FormControl>
+              );
+            }
+
+            case "multi-select-checkbox":
+              return (
+                <FormControl component="fieldset" error={hasError(input.name)}>
+                  <label>{input.label}</label>
+                  <Grid container>
+                    {input.options.map((option) => (
+                      <Grid item xs={12} sm={6} key={option.value}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={values?.[input.name]?.includes(
+                                option.value,
                               )}
-                            </Field>
-                          </LocalizationProvider>
-                          {touched[input.name] &&
-                            Boolean(errors[input.name]) && (
-                              <div className="error">{errors[input.name]}</div>
-                            )}
-                        </FormControl>
-                      ) : input.type === "time" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <LocalizationProvider dateAdapter={AdapterDateFns}>
-                            <Field name={input.name}>
-                              {({ field }) => {
-                                // Convert the value to a Date object if it's a string (ISO format)
-                                const parsedDate = values[input.name]
-                                  ? new Date(values[input.name])
-                                  : null;
-
-                                return (
-                                  <>
-                                    <label>{input.label}</label>
-                                    <TimePicker
-                                      {...field}
-                                      value={parsedDate}
-                                      onChange={(time) =>
-                                        setFieldValue(
-                                          input.name,
-                                          moment(time).format(
-                                            "YYYY-MM-DD HH:mm:ss Z"
-                                          )
-                                        )
-                                      }
-                                      renderInput={(params) => (
-                                        <TextField
-                                          {...params}
-                                          error={
-                                            touched[input.name] &&
-                                            Boolean(errors[input.name])
-                                          }
-                                          helperText={
-                                            touched[input.name] &&
-                                            errors[input.name]
-                                          }
-                                        />
-                                      )}
-                                    />
-                                  </>
-                                );
-                              }}
-                            </Field>
-                          </LocalizationProvider>
-                        </FormControl>
-                      ) : input.type === "date-time" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <LocalizationProvider dateAdapter={AdapterDateFns}>
-                            <Field name={input.name}>
-                              {({ field }) => {
-                                const parsedDate = values[input.name]
-                                  ? new Date(values[input.name])
-                                  : null;
-
-                                return (
-                                  <>
-                                    <label>{input.label}</label>
-                                    <DateTimePicker
-                                      {...field}
-                                      value={parsedDate}
-                                      onChange={(datetime) =>
-                                        setFieldValue(
-                                          input.name,
-                                          moment(datetime).format(
-                                            "YYYY-MM-DD HH:mm:ss Z"
-                                          )
-                                        )
-                                      }
-                                      renderInput={(params) => (
-                                        <TextField
-                                          {...params}
-                                          error={
-                                            touched[input.name] &&
-                                            Boolean(errors[input.name])
-                                          }
-                                          helperText={
-                                            touched[input.name] &&
-                                            errors[input.name]
-                                          }
-                                        />
-                                      )}
-                                    />
-                                  </>
-                                );
-                              }}
-                            </Field>
-                          </LocalizationProvider>
-                        </FormControl>
-                      ) : input.type === "password" && input.show_password ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <label>{input.label}</label>
-                          <Field name={input.name}>
-                            {({ field }) => (
-                              <TextField
-                                {...field}
-                                type={showPassword ? "text" : "password"}
-                                fullWidth={input.fullWidth}
-                                InputLabelProps={{
-                                  shrink: input.shrink,
-                                }}
-                                error={
-                                  touched[field.name] &&
-                                  Boolean(errors[field.name])
+                              onChange={(event) => {
+                                const set = new Set(values?.[input.name]);
+                                if (event.target.checked) {
+                                  set.add(option.value);
+                                } else {
+                                  set.delete(option.value);
                                 }
-                                helperText={
-                                  touched[field.name] && errors[field.name]
-                                }
-                                InputProps={{
+                                setFieldValue(input.name, Array.from(set));
+                              }}
+                            />
+                          }
+                          label={option.label}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                  {errorText(input.name)}
+                </FormControl>
+              );
+
+            case "multi-select-dropdown":
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <Select
+                    name={input.name}
+                    multiple
+                    value={values[input.name]}
+                    onChange={(event) =>
+                      setFieldValue(input.name, event.target.value)
+                    }
+                    renderValue={(selected) =>
+                      selected
+                        .map(
+                          (value) =>
+                            input.options?.find((o) => o.value === value)
+                              ?.label ?? value,
+                        )
+                        .join(", ")
+                    }
+                    error={hasError(input.name)}
+                  >
+                    {input?.options?.map((option) => (
+                      <MenuItem key={option?.value} value={option?.value}>
+                        <Checkbox
+                          checked={values?.[input?.name]?.includes(
+                            option?.value,
+                          )}
+                        />
+                        <ListItemText primary={option?.label} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errorText(input.name)}
+                </FormControl>
+              );
+
+            case "chips":
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={[]}
+                    value={values[input.name] || []}
+                    onChange={(event, newValue) => {
+                      const capped = input.max_items
+                        ? newValue.slice(0, input.max_items)
+                        : newValue;
+                      setFieldValue(input.name, capped);
+                    }}
+                    renderTags={(value, getTagProps) =>
+                      value?.map((option, index) => {
+                        const { key, ...tagProps } = getTagProps({ index });
+                        return (
+                          <Chip
+                            key={key}
+                            variant="outlined"
+                            label={option}
+                            {...tagProps}
+                          />
+                        );
+                      })
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        placeholder={input.placeholder}
+                        error={hasError(input.name)}
+                        fullWidth={input.fullWidth}
+                      />
+                    )}
+                  />
+                  {errorText(input.name)}
+                </FormControl>
+              );
+
+            case "slider":
+            case "rating": {
+              const Control = input.type === "slider" ? Slider : Rating;
+              return (
+                <FormControl fullWidth={input.fullWidth}>
+                  <label>{input.label}</label>
+                  <Control
+                    name={input.name}
+                    value={values[input.name]}
+                    onChange={(event, value) => setFieldValue(input.name, value)}
+                    min={input.min}
+                    max={input.max}
+                    step={input.step}
+                  />
+                  {errorText(input.name)}
+                </FormControl>
+              );
+            }
+
+            case "hidden":
+              return <Field type="hidden" name={input.name} />;
+
+            default:
+              return (
+                <Field name={input.name}>
+                  {({ field }) => {
+                    const isPassword =
+                      input.type === "password" && input.show_password;
+                    const visible = visiblePasswords[input.name];
+                    const isSelect = input.type === "select";
+
+                    return (
+                      <>
+                        <label>{input.label}</label>
+                        <TextField
+                          {...field}
+                          type={isPassword && visible ? "text" : input.type}
+                          fullWidth={input.fullWidth}
+                          placeholder={input.placeholder ?? ""}
+                          select={isSelect}
+                          slotProps={{
+                            inputLabel: { shrink: input.shrink },
+                            select:
+                              isSelect && input.placeholder
+                                ? {
+                                    displayEmpty: true,
+                                    renderValue: (value) =>
+                                      value === "" ? (
+                                        <span className="select-placeholder">
+                                          {input.placeholder}
+                                        </span>
+                                      ) : (
+                                        input.options.find(
+                                          (option) => option.value === value,
+                                        )?.label ?? value
+                                      ),
+                                  }
+                                : undefined,
+                            input: isPassword
+                              ? {
                                   endAdornment: (
                                     <InputAdornment position="end">
                                       <IconButton
                                         aria-label="toggle password visibility"
-                                        onClick={handleClickShowPassword}
-                                        onMouseDown={handleMouseDownPassword}
+                                        onClick={() =>
+                                          setVisiblePasswords((prev) => ({
+                                            ...prev,
+                                            [input.name]: !prev[input.name],
+                                          }))
+                                        }
+                                        onMouseDown={(event) =>
+                                          event.preventDefault()
+                                        }
                                         edge="end"
                                       >
-                                        {showPassword ? (
+                                        {visible ? (
                                           <Visibility />
                                         ) : (
                                           <VisibilityOff />
@@ -682,301 +828,85 @@ const GlobalForm = ({
                                       </IconButton>
                                     </InputAdornment>
                                   ),
-                                }}
-                              />
-                            )}
-                          </Field>
-                        </FormControl>
-                      ) : input.type === "image" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <label>{input.label}</label>
-                          <Field name={input.name}>
-                            {({ field, form }) => (
-                              <ImageUpload
-                                field={field}
-                                form={form}
-                                className={input.className}
-                              />
-                            )}
-                          </Field>
-                          {touched[input.name] &&
-                            Boolean(errors[input.name]) && (
-                              <div className="error">{errors[input.name]}</div>
-                            )}
-                        </FormControl>
-                      ) : input.type === "file" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <label>{input.label}</label>
-                          <Field name={input.name}>
-                            {({ field, form }) => (
-                              <FileUpload field={field} form={form} />
-                            )}
-                          </Field>
-                          {touched[input.name] && errors[input.name] && (
-                            <div className="error">{errors[input.name]}</div>
-                          )}
-                        </FormControl>
-                      ) : input.type === "multi-select-checkbox" ? (
-                        <FormControl
-                          component="fieldset"
-                          error={
-                            touched[input.name] && Boolean(errors[input.name])
+                                }
+                              : undefined,
+                          }}
+                          rows={input.rows}
+                          multiline={Boolean(input.rows)}
+                          error={hasError(field.name)}
+                          helperText={
+                            hasError(field.name)
+                              ? errors[field.name]
+                              : input.helper_text
+                          }
+                          onKeyDown={
+                            input.type === "number"
+                              ? (e) => {
+                                  // block letters; keep digits, the decimal
+                                  // point and editing/navigation keys
+                                  if (e.key.length === 1 && !/[0-9.]/.test(e.key)) {
+                                    e.preventDefault();
+                                  }
+                                }
+                              : undefined
                           }
                         >
-                          <label>{input.label}</label>
-                          <Grid container>
-                            {input.options.map((option) => (
-                              <Grid item xs={12} sm={6} key={option.value}>
-                                <label>{input.label}</label>
-
-                                <FormControlLabel
-                                  control={
-                                    <Checkbox
-                                      checked={values?.[input.name]?.includes(
-                                        option.value
-                                      )}
-                                      onChange={(event) => {
-                                        const set = new Set(
-                                          values?.[input.name]
-                                        );
-                                        if (event.target.checked) {
-                                          set.add(option.value);
-                                        } else {
-                                          set.delete(option.value);
-                                        }
-                                        setFieldValue(
-                                          input.name,
-                                          Array.from(set)
-                                        );
-                                      }}
-                                    />
-                                  }
-                                  label={option.label}
-                                />
-                              </Grid>
+                          {isSelect &&
+                            input.options.map((option) => (
+                              <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                              </MenuItem>
                             ))}
-                          </Grid>
-                          {touched[input.name] &&
-                            Boolean(errors[input.name]) && (
-                              <div className="error">{errors[input.name]}</div>
-                            )}
-                        </FormControl>
-                      ) : input.type === "multi-select-dropdown" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <Field name={input.name}>
-                            {({ field }) => (
-                              <>
-                                <label>{input.label}</label>
+                        </TextField>
+                      </>
+                    );
+                  }}
+                </Field>
+              );
+          }
+        };
 
-                                <Select
-                                  {...field}
-                                  multiple
-                                  value={values[input.name]}
-                                  onChange={(event) =>
-                                    setFieldValue(
-                                      input.name,
-                                      event.target.value
-                                    )
-                                  }
-                                  renderValue={(selected) =>
-                                    selected.join(", ")
-                                  }
-                                  error={
-                                    touched[field.name] &&
-                                    Boolean(errors[field.name])
-                                  }
-                                >
-                                  {input?.options?.map((option) => (
-                                    <MenuItem
-                                      key={option?.value}
-                                      value={option?.value}
-                                    >
-                                      <Checkbox
-                                        checked={values?.[
-                                          input?.name
-                                        ]?.includes(option?.value)}
-                                      />
-                                      <ListItemText primary={option?.label} />
-                                    </MenuItem>
-                                  ))}
-                                </Select>
-                              </>
-                            )}
-                          </Field>
-                          {touched[input.name] &&
-                            Boolean(errors[input.name]) && (
-                              <div className="error">{errors[input.name]}</div>
-                            )}
-                        </FormControl>
-                      ) : input.type === "chips" ? (
-                        <Grid
-                          item
-                          xs={input.xs}
-                          sm={input.sm}
-                          md={input.md}
-                          lg={input.lg}
-                          key={input.name}
-                        >
-                          <Field name={input.name}>
-                            {({ field }) => (
-                              <Autocomplete
-                                multiple
-                                freeSolo
-                                options={[]}
-                                value={values[input.name] || []}
-                                onChange={(event, newValue) => {
-                                  if (
-                                    input.max_items &&
-                                    newValue.length > input.max_items
-                                  ) {
-                                    newValue = newValue.slice(
-                                      0,
-                                      input.max_items
-                                    );
-                                  }
-                                  setFieldValue(input.name, newValue);
-                                }}
-                                renderTags={(value, getTagProps) =>
-                                  value?.map((option, index) => (
-                                    <Chip
-                                      key={index}
-                                      variant="outlined"
-                                      label={option}
-                                      {...getTagProps({ index })}
-                                    />
-                                  ))
-                                }
-                                renderInput={(params) => (
-                                  <>
-                                    <label>{input.label}</label>
-
-                                    <TextField
-                                      {...params}
-                                      error={
-                                        touched[input.name] &&
-                                        Boolean(errors[input.name])
-                                      }
-                                      helperText={
-                                        touched[input.name] &&
-                                        errors[input.name]
-                                      }
-                                      fullWidth={input.fullWidth}
-                                    />
-                                  </>
-                                )}
-                              />
-                            )}
-                          </Field>
-                        </Grid>
-                      ) : input.type === "slider" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <label>{input.label}</label>
-                          <Field name={input.name}>
-                            {({ field }) => (
-                              <Slider
-                                {...field}
-                                value={values[input.name]}
-                                onChange={(event, value) =>
-                                  setFieldValue(input.name, value)
-                                }
-                                min={input.min}
-                                max={input.max}
-                                step={input.step}
-                              />
-                            )}
-                          </Field>
-                          {touched[input.name] && errors[input.name] && (
-                            <div className="error">{errors[input.name]}</div>
-                          )}
-                        </FormControl>
-                      ) : input.type === "rating" ? (
-                        <FormControl fullWidth={input.fullWidth}>
-                          <label>{input.label}</label>
-                          <Field name={input.name}>
-                            {({ field }) => (
-                              <Rating
-                                {...field}
-                                value={values[input.name]}
-                                onChange={(event, value) =>
-                                  setFieldValue(input.name, value)
-                                }
-                              />
-                            )}
-                          </Field>
-                          {touched[input.name] && errors[input.name] && (
-                            <div className="error">{errors[input.name]}</div>
-                          )}
-                        </FormControl>
-                      ) : input.type === "hidden" ? (
-                        <Field type="hidden" name={input.name} />
-                      ) : (
-                        <Field name={input.name}>
-                          {({ field }) => (
-                            <>
-                              <label>{input.label}</label>
-                              <TextField
-                                {...field}
-                                type={input.type}
-                                fullWidth={input.fullWidth}
-                                placeholder={input.placeholder ?? ""}
-                                select={input.type === "select"}
-                                InputLabelProps={{
-                                  shrink: input.shrink,
-                                }}
-                                rows={input.rows}
-                                multiline={input.rows ? true : false}
-                                error={
-                                  touched[field.name] &&
-                                  Boolean(errors[field.name])
-                                }
-                                helperText={
-                                  touched[field.name] && errors[field.name]
-                                }
-                                onKeyPress={
-                                  input.type === "number"
-                                    ? (e) => {
-                                        // Allow only numbers and the decimal point
-                                        if (!/[0-9.]/.test(e.key)) {
-                                          e.preventDefault();
-                                        }
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {input.type === "select" &&
-                                  input.options.map((option) => (
-                                    <MenuItem
-                                      key={option.value}
-                                      value={option.value}
-                                    >
-                                      {option.label}
-                                    </MenuItem>
-                                  ))}
-                              </TextField>
-                            </>
-                          )}
-                        </Field>
-                      )}
-                    </Grid>
-                  );
-                })}
-                {children} {/* Render custom fields here */}
-              </Grid>
-
-              {showSubmitBtn && (
-                <Button
-                  type="submit"
-                  className={btnClassName}
-                  style={{ marginTop: "16px" }}
+        return (
+          <Form noValidate>
+            <Grid container spacing={2}>
+              {form_config?.map((input) => (
+                <Grid
+                  item
+                  xs={input.xs}
+                  sm={input.sm}
+                  md={input.md}
+                  lg={input.lg}
+                  key={input.name}
+                  className="global-form"
                 >
-                  {btnText}
-                </Button>
-              )}
-            </Form>
-          );
-        }}
-      </Formik>
-    </ThemeProvider>
+                  {renderField(input)}
+                  {OWN_HELPER_TEXT.has(input.type) && helperText(input)}
+                </Grid>
+              ))}
+              {children}
+            </Grid>
+
+            {showSubmitBtn && (
+              <Button
+                type="submit"
+                className={btnClassName}
+                style={{ marginTop: "16px" }}
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
+              >
+                {btnText}
+              </Button>
+            )}
+          </Form>
+        );
+      }}
+    </Formik>
+  );
+
+  return showTheme ? (
+    <ThemeProvider theme={formTheme}>{form}</ThemeProvider>
+  ) : (
+    form
   );
 };
 

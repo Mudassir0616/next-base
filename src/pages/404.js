@@ -1,20 +1,28 @@
 import MessagePanel from "@/components/common/MessagePanel";
+import Seo from "@/components/common/Seo";
+import { seoStaticProps } from "@/utils/functionUtils";
 import React from "react";
 
 const NotFound = () => {
     return (
-        <MessagePanel
-            visual={
-                <p className="error-code">
-                    4<span>0</span>4
-                </p>
-            }
-            title="We couldn't find that page"
-            description="Grovanta helps organizations navigate complex growth landscapes, but this specific path seems to be off our roadmap. Let us guide you back to familiar territory."
-            buttonText="Back to Homepage"
-            buttonLink="/"
-        />
+        <>
+            <Seo title="Page Not Found" path="/404" noindex />
+
+            <MessagePanel
+                visual={
+                    <p className="error-code">
+                        4<span>0</span>4
+                    </p>
+                }
+                title="We couldn't find that page"
+                description="The page you're looking for may have moved or no longer exists. Let us guide you back to familiar territory."
+                buttonText="Back to Homepage"
+                buttonLink="/"
+            />
+        </>
     );
 };
+
+export const getStaticProps = seoStaticProps("/404");
 
 export default NotFound;

@@ -1,28 +1,17 @@
+import Seo from "@/components/common/Seo";
 import LandingPage from "@/components/LandingPage/LandingPage";
-import { fetchGlobalHead, fetchSeoHeads } from "@/utils/functionUtils";
+import { seoStaticProps } from "@/utils/functionUtils";
 
-export default function Home() {
+export default function Home({ seo }) {
   return (
     <>
+      <Seo description={seo?.description} image={seo?.image} path="/" />
       <LandingPage />
     </>
   );
 }
 
-
-export async function getStaticProps({ locale }) {
-  const currentLocale = locale || "en";
-
-  const [heads, globalHead] = await Promise.all([
-    fetchSeoHeads(currentLocale),
-    fetchGlobalHead(currentLocale),
-  ]);
-
-  return {
-    props: {
-      heads,
-      globalHead
-    },
-    revalidate: 60,
-  };
-}
+export const getStaticProps = seoStaticProps("/", {
+  description: "home_description",
+  image: "home_image",
+});

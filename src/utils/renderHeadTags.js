@@ -1,52 +1,61 @@
-import React from 'react';
+import { cloneElement, isValidElement } from 'react';
 import parse from 'html-react-parser';
-
-// const ALLOWED = new Set(['title', 'meta', 'link', 'script', 'noscript', 'style', 'base']);
-
-// export function renderHeadTags(html) {
-//     if (!html) return null;
-
-//     return parse(html, {
-//         replace: (node) => {
-//             // only allow real head tags
-//             if ((node).type !== 'tag') return;
-//             const el = node;
-
-//             // allow only head-safe tags
-//             if (!ALLOWED.has(el.name)) return <></>;
-
-//             // (optional) block inline scripts for safety; allow only external script src
-//             if (el.name === 'script' && (!el.attribs || !el.attribs.src)) return <></>;
-
-//             // otherwise keep the node as-is
-//             return;
-//         },
-//     });
-// }
 
 const ALLOWED = new Set(['title', 'meta', 'link', 'script', 'noscript', 'style', 'base']);
 
-export function renderHeadTags(html) {
-    if (!html) return null;
+/**
+ * The key a head tag is de-duplicated by. next/head drops all but the last
+ * tag per key, so every source of head tags — the CMS strings parsed here and
+ * the tags <Seo> derives — must key the same tag the same way:
+ *
+ *   <title>                      -> "title"
+ *   <meta name|property="x">     -> "meta:x"   (og:*, twitter:*, description…)
+ *   <link rel="canonical">       -> "canonical"
+ *
+ * Unkeyed, next/head dedupes only <title> and <meta name>, so a CMS og:title
+ * and a derived one would both ship.
+ */
+export const metaKey = (name) => `meta:${String(name).toLowerCase()}`;
 
-    // Replace non-breaking spaces and weird invisible chars in attributes
-    const cleanedHtml = html
-        .replace(/\u00A0/g, ' ') // replace non-breaking space
+const identityKey = (element) => {
+    const { type, props } = element;
+
+    if (type === 'title') return 'title';
+    if (type === 'meta' && (props.name || props.property)) {
+        return metaKey(props.name || props.property);
+    }
+    if (type === 'link' && String(props.rel).toLowerCase() === 'canonical') {
+        return 'canonical';
+    }
+
+    return null;
+};
+
+/**
+ * CMS head html -> keyed React elements for next/head.
+ *
+ * Only head-safe tags survive, and inline <script> is dropped (external
+ * `src` scripts are kept). `prefix` keeps the keys of tags with no identity
+ * (a stylesheet link, a verification script) unique between the several CMS
+ * strings one page renders.
+ */
+export function renderHeadTags(html, prefix = 'head') {
+    if (!html) return [];
+
+    // Replace non-breaking spaces and invisible characters editors paste in
+    const cleanedHtml = String(html)
+        .replace(/ /g, ' ')
         .replace(/<(\w+)([^>]*?)>/g, (match, tag, attrs) => {
-            // clean invalid characters in attribute names
-            const cleanedAttrs = attrs.replace(/[\u00A0\u200B\uFEFF]/g, '');
+            const cleanedAttrs = attrs.replace(/[ ​﻿]/g, '');
             return `<${tag}${cleanedAttrs}>`;
         });
 
-    return parse(cleanedHtml, {
-        replace: (node) => {
-            if (node.type !== 'tag') return;
-            const el = node;
-            if (!ALLOWED.has(el?.name)) return <></>;
-            if (el?.name === 'script' && (!el?.attribs || !el?.attribs.src)) return <></>;
-            return;
-        },
-    });
+    const nodes = [].concat(parse(cleanedHtml));
+
+    return nodes
+        .filter((node) => isValidElement(node) && ALLOWED.has(node.type))
+        .filter((node) => node.type !== 'script' || node.props?.src)
+        .map((node, index) =>
+            cloneElement(node, { key: identityKey(node) || `${prefix}-${index}` }),
+        );
 }
-
-

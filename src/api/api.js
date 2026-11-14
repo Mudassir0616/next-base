@@ -5,44 +5,9 @@ import { API_BASE_URL } from "@/site.config";
 // the fallback lives in site.config.js, not here.
 export const BASE_URL = API_BASE_URL;
 
-
-
-const getUserId = () => {
-    // Check if window and localStorage are available
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-        return window.localStorage.getItem('userId');
-    }
-    return null; // Return null if localStorage is not available
-};
-
-// Export the userId constant
-export const userId = getUserId();
-
-
-
-////////////////////////////////// Sign Up Apis /////////////////////////////
-
-export const signUpApi = new APIBase({
-    baseURL: `${BASE_URL}/api/signup/`,
-});
-
-export const LogoutApi = new APIBase({
-    baseURL: `${BASE_URL}/api/logout/`,
-    tokenKey: "access_token",
-    refreshTokenKey: "refresh_token",
-    refreshURL: `${BASE_URL}/api/token/refresh/`,
-});
-
-export const loginApi = new APIBase({
-    baseURL: `${BASE_URL}/api/token/`,
-
-});
-
-
 export const SiteSettingApi = new APIBase({
     baseURL: `${BASE_URL}/api/site-setting/`,
 });
-
 
 ///////////////////////////////// Forms ////////////////////////////
 
@@ -50,7 +15,6 @@ export const SiteSettingApi = new APIBase({
 export const ContactApi = new APIBase({
     baseURL: `${BASE_URL}/api/contact/`,
 });
-
 
 // Faqs API
 export const FaqApi = new APIBase({
@@ -60,8 +24,6 @@ export const FaqApi = new APIBase({
 export const FaqCategoryApi = new APIBase({
     baseURL: `${BASE_URL}/api/faq-category/`,
 });
-
-
 
 ////////////////////// Career //////////////////////
 
@@ -80,7 +42,6 @@ export const CareerApplicationApi = new APIBase({
     defaultHeaders: { "ngrok-skip-browser-warning": "true" },
 });
 
-
 ////////////////////// Leadership / Our team //////////////////////
 
 export const LeadershipApi = new APIBase({
@@ -97,9 +58,8 @@ export const BlogCategoryApi = new APIBase({
     baseURL: `${BASE_URL}/api/blog-category/`,
 });
 
-
-
-////////////////////// Case //////////////
+////////////////////// Declared, no page yet //////////////////////
+// Endpoints the reference backend serves that a clone usually wants next.
 
 export const CaseStudyListApi = new APIBase({
     baseURL: `${BASE_URL}/api/case-study/`,
@@ -108,8 +68,6 @@ export const CaseStudyListApi = new APIBase({
 export const CaseStudyCategoryApi = new APIBase({
     baseURL: `${BASE_URL}/api/case-study-category/`,
 });
-
-
 
 export const testimonialAPI = new APIBase({
     baseURL: `${BASE_URL}/api/testimonial/`,

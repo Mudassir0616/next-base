@@ -15,18 +15,15 @@ const eslintConfig = [
   {
     rules: {
       // eslint-plugin-react-hooks 7 (new in eslint-config-next 16) errors on
-      // two patterns this base is built on. They are downgraded to warnings so
-      // a clone's `npm run lint` is not red out of the box — treat them as a
-      // real backlog item, not as noise.
+      // a pattern this base is built on. It is downgraded to a warning so a
+      // clone's `npm run lint` is not red out of the box — treat it as a real
+      // backlog item, not as noise.
       //
       // set-state-in-effect: every feature component fetches its CMS content
       // with `useEffect(() => { fetch_x() }, [])` and setStates the result.
       // Moving that to getStaticProps or a fetch library is a refactor of its
       // own, not part of the framework upgrade.
       "react-hooks/set-state-in-effect": "warn",
-      // refs: Navbar resets `menuItemsRef.current` during render so the ref
-      // callbacks can re-collect the items GSAP staggers over.
-      "react-hooks/refs": "warn",
     },
   },
 ];

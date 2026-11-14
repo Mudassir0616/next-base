@@ -32,20 +32,28 @@ There is no test suite and no TypeScript.
 Four things, in order:
 
 1. **`.env`** — `NEXT_PUBLIC_API_BASE_URL` (the CMS) and `NEXT_PUBLIC_SITE_URL` (the live domain, no trailing slash). Both are `NEXT_PUBLIC_*`, so they are inlined at build time; changing either needs a rebuild.
-2. **[`src/site.config.js`](src/site.config.js)** — brand name, default description, logo, default social card, country, and which routes and CMS collections go into the sitemap. Every `<title>` suffix, canonical, JSON-LD id and robots rule derives from this file. Nothing else in `src/` should hardcode a brand or a domain; if you find yourself typing one, put it here instead.
-3. **`public/`** — swap the logo, icons and images. The favicon set `_app.js` links (`/favicon/*`) and the default social card `site.config.js` names are **not** in the repo; add them or update the paths, or you will serve 404s on every page and a dead `og:image`.
-4. **`src/styles/main.scss` + `global.scss`** — the design. See [Styles](#styles) for the compile step.
+2. **[`src/site.config.js`](src/site.config.js)** — brand name, default description, logo, default social card, locale, country, the header/mobile/footer navigation (`nav`, `footer`), and which routes and CMS collections go into the sitemap. Every `<title>` suffix, canonical, JSON-LD id and robots rule derives from this file. Nothing else in `src/` should hardcode a brand or a domain; if you find yourself typing one, put it here instead.
+3. **`public/`** — swap the logo, icons and images. Only `images/logo.png` and a few icons ship in the repo. The favicon set `_app.js` links (`/favicon/*`), the default social card, the page-banner fallbacks (`/images/*-bg.webp`) and several icons the components name are **not** in the repo; add them or update the paths, or you will serve 404s and a dead `og:image`.
+4. **Copy in the components** — some Grovanta-specific copy (CTA bands, the home "process" ribbon, the leadership section text, contact-detail fallbacks) still lives in the components. Search for the old brand name and rewrite it.
+5. **`src/styles/main.scss` + `global.scss`** — the design. See [Styles](#styles) for the compile step.
 
 `package.json` still says `guinwa_portfolio`; rename it if it matters to your tooling.
 
 ## What the backend must provide
 
-Endpoints are declared once in [`src/api/api.js`](src/api/api.js), each as an `APIBase` instance. The prebuilt pages expect a DRF-style API — `{ count, next, previous, results: [] }`, `?page_size=`, `?order_by=` — at:
+Endpoints are declared once in [`src/api/api.js`](src/api/api.js), each as an `APIBase` instance. The prebuilt pages expect a Django REST API whose list endpoints return
+
+```json
+{ "links": { "first": "…", "last": "…", "previous": null, "next": "…", "pages": [] },
+  "current_page": 1, "last_page": 3, "total_items": 42, "page_size": 20, "results": [] }
+```
+
+and accept `?page=`, `?page_size=`, `?order_by=` (`-` for descending), `?slug=` (exact match — an unknown slug must return empty `results`, which is how detail pages 404) and `?depth=3&nested=True` (inline related records). The endpoints:
 
 | Endpoint | Used by |
 | --- | --- |
-| `/api/site-setting/` | Global settings: hero titles/images per page, contact details, socials, `global_head`. Fetched once and shared via `useSiteSetting()`. |
-| `/api/head/` | Per-route SEO head HTML, matched on `target_url`. |
+| `/api/site-setting/` | Global settings: hero copy/images per page (also used for each page's meta description and social card), contact details, socials, privacy policy and terms HTML, `global_head`. Fetched in the browser via `useSiteSetting()`, and server-side for SEO. |
+| `/api/head/` | Per-route SEO head HTML, matched on `target_url`. Up to 500 records are read. |
 | `/api/blog/`, `/api/blog-category/` | Blog list and detail. |
 | `/api/career/`, `/api/career-category/`, `/api/career-application/` | Careers list, detail, and the application form (multipart resume upload). |
 | `/api/faq/`, `/api/faq-category/` | FAQs page. |
@@ -64,12 +72,13 @@ Two CMS authoring conventions the components rely on:
 
 Configured in `site.config.js`, assembled in [`src/utils/seo.js`](src/utils/seo.js), rendered by [`src/components/common/Seo.jsx`](src/components/common/Seo.jsx).
 
-- A record's own CMS `head` always wins. `<Seo>` renders it first, then fills in only the tags it did not already define, so a page can never ship without a title, description, canonical and social card.
+- **Every page renders `<Seo>`**, and its `getStaticProps` calls `seoStaticProps()` / `fetchPageSeo()` from `src/utils/functionUtils.js` to fetch the CMS head data for its route. A new page must do both.
+- Precedence, lowest to highest: the site-wide `global_head` → tags derived from the page (title, description, canonical, Open Graph, Twitter) → the `/api/head/` record for the route → a record's own `head` field. Whatever an editor fills in wins, and a page never ships without a title, description, canonical and social card. Pages that pass `noindex` (thank-you, 404, closed jobs) stay unindexed whatever the CMS says.
 - `/sitemap.xml` and `/robots.txt` are **routes**, not files in `public/`, so they follow `NEXT_PUBLIC_SITE_URL` and pick up new CMS records without a deploy. Add a section to the sitemap by adding a collection to `site.config.js`.
 - `robots.txt` serves `Disallow: /` to any host that is not the one `NEXT_PUBLIC_SITE_URL` names. Staging and preview deploys are therefore de-indexed by default — set the env var to the real domain at launch, or the live site stays blocked.
-- JSON-LD builders for Organization, BreadcrumbList, BlogPosting, Service and JobPosting live in `src/utils/seo.js`; pages pass them to `<Seo jsonLd={[...]} />`.
+- JSON-LD builders for Organization, BreadcrumbList, BlogPosting and JobPosting live in `src/utils/seo.js`; pages pass them to `<Seo jsonLd={[...]} />`.
 
-**Known gap:** only `/blogs/[slug]` and `/careers/[slug]` render `<Seo>`. The other nine pages get head tags only from a matching `/api/head/` record or `global_head`. When you add a page, render `<Seo>` in it.
+**Known gap:** the listing pages (FAQs, team, careers, blog list, contact) fetch their *content* in the browser, so their prerendered HTML has head tags but no body text. Privacy policy and terms are rendered server-side.
 
 ## Styles
 
@@ -79,6 +88,8 @@ Global CSS, no CSS modules and no Tailwind. `_app.js` imports `src/styles/global
 
 Pages Router (`src/pages`), `@/*` → `./src/*`. Page files are thin — data fetching and `<Seo>` — and delegate to one component under `src/components/<Feature>/`.
 
-The one rule that will bite you: **server-side code uses `fetchApi()`, client-side code uses the `APIBase` instances.** `APIBase` reads `localStorage` in its request interceptor and throws during SSR.
+The one rule that will bite you: **server-side code uses `fetchApi()`, client-side code uses the `APIBase` instances.** `fetchApi` returns `null` on any failure so a CMS outage cannot fail a build; `APIBase` is a browser client that toasts errors. See [src/utils/ApiBase.md](src/utils/ApiBase.md).
+
+Forms are built with `GlobalForm` (`src/components/common/GlobalForm.jsx`) from a field config array; its header comment lists the field types and options. It awaits your `on_Submit` and disables the button meanwhile.
 
 [CLAUDE.md](CLAUDE.md) has the full architecture tour — conventions, the data-fetching split, providers, and the CMS mapping layer.

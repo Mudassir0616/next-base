@@ -2,53 +2,11 @@ import { Call, KeyboardArrowDown } from "@mui/icons-material";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import React from "react";
+import site from "@/site.config";
 
-// Mirrors the desktop nav so the two can't drift apart. Expertise comes from
-// the categories the navbar already fetched, so there is only one request.
-const buildMenu = (expertise = []) => [
-  { label: "Home", href: "/" },
-  {
-    label: "About Us",
-    key: "about",
-    links: [
-      { label: "Overview", href: "/about-us" },
-      { label: "Our Team", href: "/our-team" },
-      { label: "Careers", href: "/careers" },
-    ],
-  },
-  // falls back to a plain link while the categories endpoint is unavailable,
-  // rather than leaving an accordion that opens onto nothing
-  // expertise.length
-  //   ? {
-  //       label: "Expertise",
-  //       key: "expertise",
-  //       links: expertise.map((item) => ({
-  //         label: item.title,
-  //         href: `/expertise/${item.slug}`,
-  //       })),
-  //     }
-  //   : { label: "Expertise", href: "/expertise" },
-  {
-    label: "Insights",
-    key: "insights",
-    links: [
-      // { label: "Blogs", href: "/blogs" },
-      { label: "FAQs", href: "/faqs" },
-      { label: "Success Stories", href: "/case-study" },
-    ],
-  },
-];
-
-const MobileNavbar = ({
-  check,
-  openSubMenu,
-  toggleSubMenu,
-  onNavigate,
-  expertise = [],
-}) => {
+// Reads the same `site.nav` as the desktop navbar, so the two can't drift.
+const MobileNavbar = ({ check, openSubMenu, toggleSubMenu, onNavigate }) => {
   const router = useRouter();
-
-  const MENU = buildMenu(expertise);
 
   const go = (href) => {
     onNavigate?.();
@@ -58,18 +16,19 @@ const MobileNavbar = ({
   return (
     <div className={`mobile-menu ${check ? "active-mobile-menu" : ""}`}>
       <ul>
-        {MENU.map((item) =>
-          item.links ? (
+        {site.nav.map((item) =>
+          item.children ? (
             <li
-              className={`sub-menu ${openSubMenu?.[item.key] ? "open" : ""}`}
+              className={`sub-menu ${openSubMenu?.[item.label] ? "open" : ""}`}
               key={item.label}
             >
               <div
                 className="menu-item"
-                onClick={() => toggleSubMenu(item.key)}
+                onClick={() => toggleSubMenu(item.label)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && toggleSubMenu(item.key)}
+                aria-expanded={Boolean(openSubMenu?.[item.label])}
+                onKeyDown={(e) => e.key === "Enter" && toggleSubMenu(item.label)}
               >
                 <p>{item.label}</p>
 
@@ -79,7 +38,7 @@ const MobileNavbar = ({
               </div>
 
               <ul className="sub-links">
-                {item.links.map((link) => (
+                {item.children.map((link) => (
                   <li key={link.href}>
                     <Link href={link.href} onClick={onNavigate}>
                       {link.label}

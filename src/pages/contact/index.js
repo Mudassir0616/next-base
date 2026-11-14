@@ -1,10 +1,25 @@
-import Contact from '@/components/Contact/Index'
-import React from 'react'
+import Contact from "@/components/Contact/Index";
+import Seo from "@/components/common/Seo";
+import { seoStaticProps } from "@/utils/functionUtils";
 
-const Index = () => {
+const Index = ({ seo }) => {
     return (
-        <Contact />
-    )
-}
+        <>
+            <Seo
+                title="Contact Us"
+                description={seo?.description}
+                image={seo?.image}
+                path="/contact"
+            />
 
-export default Index
+            <Contact />
+        </>
+    );
+};
+
+export const getStaticProps = seoStaticProps("/contact", {
+    description: "contact_us_hero_description",
+    image: "contact_us_hero_image",
+});
+
+export default Index;

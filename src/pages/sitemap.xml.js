@@ -1,6 +1,6 @@
 import site from "@/site.config";
 import { canonicalUrl } from "@/utils/seo";
-import { fetchApi } from "@/utils/functionUtils";
+import { fetchApi, listResults } from "@/utils/functionUtils";
 
 /**
  * /sitemap.xml, built on request from the CMS.
@@ -19,10 +19,6 @@ const escapeXml = (value) =>
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&apos;");
-
-/** A CMS listing is either a DRF page (`{ results: [] }`) or a bare array. */
-const records = (payload) =>
-    Array.isArray(payload) ? payload : payload?.results || [];
 
 /** `2026-09-01T16:10:25+05:30` -> `2026-09-01`, dropping anything unparseable. */
 const lastmodDate = (value) => {
@@ -47,7 +43,7 @@ const urlEntry = ({ path, lastmod, changefreq, priority }) =>
 async function collectionEntries(collection) {
     const payload = await fetchApi(collection.endpoint);
 
-    return records(payload)
+    return listResults(payload)
         .filter((record) => record?.slug)
         .filter((record) => (collection.include ? collection.include(record) : true))
         .map((record) => ({

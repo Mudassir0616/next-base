@@ -1,21 +1,25 @@
-import { BASE_URL } from "@/api/api";
 import { East } from "@mui/icons-material";
-import moment from "moment";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import React from "react";
+import site from "@/site.config";
+import { formatCmsDate, mediaUrl } from "@/utils/functionUtils";
 
 const BlogCard = ({ data }) => {
   const router = useRouter();
+  const href = `/blogs/${data?.slug}`;
 
   return (
-    <article
-      className="blog-card"
-      onClick={() => router.push(`/blogs/${data?.slug}`)}
-    >
+    // the whole card is clickable; the "Read more" link is the real anchor
+    // for crawlers and keyboards, and stops the click so it navigates once
+    <article className="blog-card" onClick={() => router.push(href)}>
       <div>
         <div className="img-container">
-          <img src={`${BASE_URL}${data?.thumbnail}`} />
+          <img
+            src={mediaUrl(data?.thumbnail, site.defaultImage)}
+            alt={data?.title || ""}
+            loading="lazy"
+          />
         </div>
         <div className="content">
           <div className="category">{data?.category?.category}</div>
@@ -24,10 +28,14 @@ const BlogCard = ({ data }) => {
         </div>
       </div>
       <div className="bottom-content">
-        <Link href={`/blogs/${data?.slug}`} className="read-more">
+        <Link
+          href={href}
+          className="read-more"
+          onClick={(event) => event.stopPropagation()}
+        >
           Read more <East />
         </Link>
-        <p>{moment(data?.created_at).format("MMM DD, YYYY")}</p>
+        <p>{formatCmsDate(data?.created_at)}</p>
       </div>
     </article>
   );

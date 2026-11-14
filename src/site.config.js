@@ -38,6 +38,54 @@ export const site = {
     country: { name: "India", code: "IN" },
 
     /**
+     * Header navigation, shared by the desktop navbar and the mobile menu so
+     * the two cannot drift. An item is either a link (`href`) or a dropdown
+     * (`children`). Only link to routes that exist in `src/pages`.
+     */
+    nav: [
+        { label: "Home", href: "/" },
+        {
+            label: "About Us",
+            children: [
+                { label: "Our Team", href: "/our-team" },
+                { label: "Careers", href: "/careers" },
+            ],
+        },
+        {
+            label: "Insights",
+            children: [
+                { label: "Blogs", href: "/blogs" },
+                { label: "FAQs", href: "/faqs" },
+            ],
+        },
+    ],
+
+    /** Footer link columns and the legal links in the copyright bar. */
+    footer: {
+        columns: [
+            {
+                title: "About Us",
+                links: [
+                    { label: "Our Team", href: "/our-team" },
+                    { label: "Careers", href: "/careers" },
+                ],
+            },
+            {
+                title: "Quick Links",
+                links: [
+                    { label: "Home", href: "/" },
+                    { label: "Blogs", href: "/blogs" },
+                    { label: "FAQs", href: "/faqs" },
+                ],
+            },
+        ],
+        legal: [
+            { label: "Privacy Policy", href: "/privacy-policy" },
+            { label: "Terms & Conditions", href: "/terms-and-conditions" },
+        ],
+    },
+
+    /**
      * How /sitemap.xml is built. Routes that should never be indexed (404,
      * thank-you, anything behind a form) simply stay out of this list.
      */

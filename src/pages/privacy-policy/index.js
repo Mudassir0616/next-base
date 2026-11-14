@@ -1,27 +1,23 @@
-import { useSiteSetting } from '@/context/useSiteSettings';
-import { Breadcrumbs } from '@mui/material'
-import Link from 'next/link'
-import React from 'react'
+import LegalPage from "@/components/common/LegalPage";
+import Seo from "@/components/common/Seo";
+import { fetchPageSeo, REVALIDATE_SECONDS } from "@/utils/functionUtils";
 
-const Index = () => {
-    const { settings } = useSiteSetting();
-
+const Index = ({ content }) => {
     return (
-        <div className="container">
-            <Breadcrumbs aria-label="breadcrumb" sx={{ padding: { lg: '15px 0', xs: '10px 0' } }}>
-                <Link underline="hover" color="inherit" href="/">
-                    Home
-                </Link>
-                <p>Privacy Policy</p>
-            </Breadcrumbs>
+        <>
+            <Seo title="Privacy Policy" description={content} path="/privacy-policy" />
+            <LegalPage title="Privacy Policy" html={content} />
+        </>
+    );
+};
 
-            <div className="my-10">
-                <h1 className='title-color'>Privacy Policy</h1>
-            </div>
+export async function getStaticProps() {
+    const { seoHead, setting } = await fetchPageSeo("/privacy-policy");
 
-            <div className="terms" dangerouslySetInnerHTML={{ __html: settings?.privacy_policy }}></div>
-        </div>
-    )
+    return {
+        props: { seoHead, content: setting.privacy_policy || "" },
+        revalidate: REVALIDATE_SECONDS,
+    };
 }
 
-export default Index
+export default Index;

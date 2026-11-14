@@ -1,12 +1,12 @@
 import { LockOutlined, Send } from "@mui/icons-material";
 import { useRouter } from "next/router";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import PageBanner from "../common/PageBanner";
 import GlobalForm from "../common/GlobalForm";
 import { useSiteSetting } from "@/context/useSiteSettings";
-import { stripHtml, splitPipeList } from "@/utils/functionUtils";
+import { mediaUrl, stripHtml, splitPipeList } from "@/utils/functionUtils";
 import { ContactApi } from "@/api/api";
-import { mediaUrl } from "@/utils/functionUtils";
+import site from "@/site.config";
 
 const Contact = () => {
   const router = useRouter();
@@ -83,7 +83,7 @@ const Contact = () => {
       email: values.email,
       phone_number: values.phone,
       requirement: values.message,
-      journey_path: typeof window !== "undefined" ? window.location.href : "",
+      journey_path: window.location.href,
     };
 
     // APIBase toasts DRF field errors for POST, so only the happy path is here.
@@ -146,7 +146,7 @@ const Contact = () => {
                   address,
                 )}&output=embed`
               }
-              title="Grovanta office location"
+              title={`${site.name} office location`}
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
               allowFullScreen
@@ -165,7 +165,7 @@ const Contact = () => {
                 {phoneNumbers.map((phone, index) => (
                   <React.Fragment key={phone}>
                     {index > 0 && ", "}
-                    <a href={`tel:${phone}`}>{phone}</a>
+                    <a href={`tel:${phone.replace(/\s+/g, "")}`}>{phone}</a>
                   </React.Fragment>
                 ))}
               </p>
