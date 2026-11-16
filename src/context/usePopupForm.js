@@ -6,7 +6,7 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 export const PopupFormContext = createContext(null);
 
 export const PopupFormProvider = ({ children }) => {
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(true);
 
     const openPopup = useCallback(() => setOpen(true), []);
     const closePopup = useCallback(() => setOpen(false), []);

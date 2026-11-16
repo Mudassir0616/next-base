@@ -161,14 +161,26 @@ const PopupForm = () => {
           overflowY: "auto",
           bgcolor: "background.paper",
           boxShadow: 24,
-          padding: "10px ",
-          borderRadius: 1,
+          padding: "10px",
+          borderRadius: "12px",
+          // MUI focuses the dialog itself on open; the fields show focus instead
+          outline: "none",
         }}
-        className="popup-form"
+        // the dialog shell (size, scroll, padding) lives in `sx`; the layout
+        // inside it is `.popup-form` in main.scss
+        className="popup-form-modal"
       >
         <div className="popup-form">
           <div className="img-container">
-            <img src="/images/popup-frame.jpg" alt="" />
+            <img
+              src="/images/popup-frame.jpg"
+              alt=""
+              // a clone without the file shows the panel's gradient, not a
+              // broken-image icon
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
           </div>
 
           <div className="form-container">
@@ -196,10 +208,12 @@ const PopupForm = () => {
                     autoComplete="name"
                     placeholder={"Enter full name"}
                     value={formData.full_name}
+                    aria-invalid={Boolean(errors.full_name)}
+                    aria-describedby={errors.full_name ? "popup-full_name-error" : undefined}
                     onChange={handleChange}
                   />
                   {errors.full_name && (
-                    <span className="error">{errors.full_name}</span>
+                    <span className="error" id="popup-full_name-error">{errors.full_name}</span>
                   )}
                 </div>
 
@@ -210,7 +224,7 @@ const PopupForm = () => {
                     type="text"
                     name="company_name"
                     autoComplete="organization"
-                    placeholder={"Enter company name"}
+                    placeholder={"Company name"}
                     value={formData.company_name}
                     onChange={handleChange}
                   />
@@ -228,9 +242,11 @@ const PopupForm = () => {
                   autoComplete="email"
                   placeholder={"your@email.com"}
                   value={formData.email}
+                  aria-invalid={Boolean(errors.email)}
+                  aria-describedby={errors.email ? "popup-email-error" : undefined}
                   onChange={handleChange}
                 />
-                {errors.email && <span className="error">{errors.email}</span>}
+                {errors.email && <span className="error" id="popup-email-error">{errors.email}</span>}
               </div>
 
               <div className="input">
@@ -243,10 +259,12 @@ const PopupForm = () => {
                   rows={5}
                   placeholder={"Enter your message"}
                   value={formData.message}
+                  aria-invalid={Boolean(errors.message)}
+                  aria-describedby={errors.message ? "popup-message-error" : undefined}
                   onChange={handleChange}
                 />
                 {errors.message && (
-                  <span className="error">{errors.message}</span>
+                  <span className="error" id="popup-message-error">{errors.message}</span>
                 )}
               </div>
 

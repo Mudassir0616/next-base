@@ -1,6 +1,6 @@
 import BlogDetails from '@/components/Blogs/BlogDetails';
 import Seo from '@/components/common/Seo';
-import { fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from '@/utils/functionUtils'
+import { assertCmsData, fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from '@/utils/functionUtils'
 import { articleSchema, breadcrumbSchema } from '@/utils/seo'
 import React from 'react'
 
@@ -57,6 +57,9 @@ export async function getStaticProps({ params }) {
     const res = await fetchApi(
         `/api/blog/?slug=${encodeURIComponent(params.slug)}&depth=3&nested=True`,
     );
+
+    // a failed request is not "this post doesn't exist" — don't cache a 404 for it
+    assertCmsData(res);
 
     const data = res?.results?.[0] || null;
 

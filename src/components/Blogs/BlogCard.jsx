@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React from "react";
 import site from "@/site.config";
+import CmsImage from "../common/CmsImage";
 import { formatCmsDate, mediaUrl } from "@/utils/functionUtils";
 
 const BlogCard = ({ data }) => {
@@ -15,10 +16,12 @@ const BlogCard = ({ data }) => {
     <article className="blog-card" onClick={() => router.push(href)}>
       <div>
         <div className="img-container">
-          <img
+          <CmsImage
             src={mediaUrl(data?.thumbnail, site.defaultImage)}
             alt={data?.title || ""}
-            loading="lazy"
+            width={800}
+            height={500}
+            sizes="(max-width: 600px) 90vw, (max-width: 1200px) 50vw, 33vw"
           />
         </div>
         <div className="content">

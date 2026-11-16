@@ -7,20 +7,21 @@ const JobCard = ({ job }) => {
     <div className="job-card">
       <h3>{job.title}</h3>
 
-      <span className="category">{job.category}</span>
+      <span className="category">{job.api_category?.name}</span>
 
       <div className="meta">
         <p>
           <LocationOnOutlined /> {job.location}
         </p>
         <p>
-          <AccessTimeOutlined /> {job.type}
+          <AccessTimeOutlined /> {job.job_type}
         </p>
       </div>
 
-      <p
+      {/* a div: the CMS sends this as <p> markup, which can't nest in a <p> */}
+      <div
         className="description"
-        dangerouslySetInnerHTML={{ __html: job.description }}
+        dangerouslySetInnerHTML={{ __html: job.short_description }}
       />
 
       <Link href={`/careers/${job.slug}`} className="cta-btn">

@@ -1,36 +1,26 @@
 import { Close, East } from "@mui/icons-material";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import PageBanner from "../common/PageBanner";
+import CmsImage from "../common/CmsImage";
 import { useLenisContext } from "@/hooks/useLenis";
-import { LeadershipApi } from "@/api/api";
-import { useSiteSetting } from "@/context/useSiteSettings";
+import useDialogFocus from "@/hooks/useDialogFocus";
 import { highlight, mediaUrl } from "@/utils/functionUtils";
 
-const BoardMembers = () => {
+// `members` and `hero` come from the page's getStaticProps, so the team is in
+// the prerendered HTML.
+const BoardMembers = ({ hero, members = [] }) => {
   const lenisRef = useLenisContext();
-  const { settings } = useSiteSetting();
+  const dialogRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState("executive");
   const [selectedMember, setSelectedMember] = useState(null);
-  const [members, setMembers] = useState([]);
+
+  useDialogFocus(dialogRef, Boolean(selectedMember));
 
   const tabs = [
     { key: "executive", label: "Executive Leadership Team", disabled: false },
     // { key: "expert", label: "Our Experts", disabled: true },
   ];
-
-  const fetch_members = async () => {
-    try {
-      const res = await LeadershipApi.get(`?order_by=order_by`);
-      setMembers(res?.results || []);
-    } catch (error) {
-      console.error("Failed to fetch leadership:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetch_members();
-  }, []);
 
   const sections = {
     executive: {
@@ -78,7 +68,7 @@ const BoardMembers = () => {
     <div className="board-members-page">
       <PageBanner
         title="Experience That Brings Strategy to Life"
-        description={settings?.about_us_leadership_description}
+        description={hero?.description}
         image="/images/about-bg.webp"
         position="90% 45%"
       />
@@ -89,6 +79,7 @@ const BoardMembers = () => {
             <button
               key={tab.key}
               className={`tab ${activeTab === tab.key ? "active" : ""}`}
+              aria-pressed={activeTab === tab.key}
               onClick={() => {
                 if (!tab.disabled) setActiveTab(tab.key);
               }}
@@ -112,10 +103,12 @@ const BoardMembers = () => {
           {activeMembers.map((member) => (
             <div className="member-card" key={member.id}>
               <div className="img-container">
-                <img
+                <CmsImage
                   src={mediaUrl(member.image, "/images/leader1.webp")}
                   alt={member.name}
-                  loading="lazy"
+                  width={600}
+                  height={572}
+                  sizes="(max-width: 600px) 100vw, (max-width: 1024px) 50vw, 25vw"
                 />
               </div>
 
@@ -132,7 +125,7 @@ const BoardMembers = () => {
                     rel="noreferrer"
                     aria-label={`${member.name} on LinkedIn`}
                   >
-                    <img src="/icons/in.svg" alt="LinkedIn" />
+                    <img src="/icons/in.svg" alt="" />
                   </a>
                 )}
               </div>
@@ -141,6 +134,7 @@ const BoardMembers = () => {
                 <button
                   className="know-more"
                   onClick={() => setSelectedMember(member)}
+                  aria-haspopup="dialog"
                 >
                   Know more <East />
                 </button>
@@ -159,9 +153,11 @@ const BoardMembers = () => {
           <div
             className="modal-content"
             onClick={(event) => event.stopPropagation()}
+            ref={dialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-label={selectedMember.name}
+            aria-labelledby="member-dialog-name"
             // Lenis preventDefaults every wheel/touch event while it is
             // stopped, so the modal has to opt its own scrolling back in
             data-lenis-prevent
@@ -177,14 +173,17 @@ const BoardMembers = () => {
               </button>
 
               <div className="img-container">
-                <img
+                <CmsImage
                   src={mediaUrl(selectedMember.image, "/images/leader1.webp")}
-                  alt={selectedMember.name}
+                  alt=""
+                  width={400}
+                  height={400}
+                  sizes="200px"
                 />
               </div>
 
               <div className="details">
-                <h3>{selectedMember.name}</h3>
+                <h3 id="member-dialog-name">{selectedMember.name}</h3>
                 <p className="designation">{selectedMember.designation}</p>
 
                 {selectedMember?.linkedin && (
@@ -194,7 +193,7 @@ const BoardMembers = () => {
                     rel="noreferrer"
                     aria-label={`${selectedMember.name} on LinkedIn`}
                   >
-                    <img src="/icons/in.svg" alt="LinkedIn" />
+                    <img src="/icons/in.svg" alt="" />
                   </a>
                 )}
 

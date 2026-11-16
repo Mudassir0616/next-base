@@ -1,49 +1,25 @@
 import { East } from "@mui/icons-material";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { toast } from "react-toastify";
 import PageBanner from "../common/PageBanner";
 import GlobalForm from "../common/GlobalForm";
 import JobCard from "./JobCard";
-import { CareerApi, CareerApplicationApi, CareerCategoryApi } from "@/api/api";
-import { useSiteSetting } from "@/context/useSiteSettings";
+import { CareerApplicationApi } from "@/api/api";
 import { mediaUrl } from "@/utils/functionUtils";
-import { mapCareer } from "@/utils/mappers";
 import { RESUME_FIELD } from "./resumeField";
 
 const ALL_ROLES = "All Roles";
 
-const Careers = () => {
-  const { settings } = useSiteSetting();
-
+// `jobs`, `jobCategories` and `hero` come from the page's getStaticProps, so
+// the open roles are in the prerendered HTML.
+const Careers = ({ hero, jobs = [], jobCategories: categories = [] }) => {
   const [activeCategory, setActiveCategory] = useState(ALL_ROLES);
-  const [jobs, setJobs] = useState([]);
-  const [jobCategories, setJobCategories] = useState([ALL_ROLES]);
-
-  const fetch_jobs = async () => {
-    try {
-      const [job_res, category_res] = await Promise.all([
-        CareerApi.get(`?is_active=true&order_by=order_by`),
-        CareerCategoryApi.get(`?order_by=order_by`),
-      ]);
-
-      setJobs((job_res?.results || []).map((job) => mapCareer(job)));
-      setJobCategories([
-        ALL_ROLES,
-        ...(category_res?.results || []).map((category) => category.name),
-      ]);
-    } catch (error) {
-      console.error("Failed to fetch careers:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetch_jobs();
-  }, []);
+  const jobCategories = [ALL_ROLES, ...categories.map((category) => category.name)];
 
   const filteredJobs =
     activeCategory === ALL_ROLES
       ? jobs
-      : jobs.filter((job) => job.category === activeCategory);
+      : jobs.filter((job) => job.api_category?.name === activeCategory);
 
   const benefits = [
     "Be considered for future opportunities that match your expertise",
@@ -125,9 +101,9 @@ const Careers = () => {
   return (
     <div className="careers-page">
       <PageBanner
-        title={settings?.career_hero_title}
-        description={settings?.career_hero_description}
-        image={mediaUrl(settings?.career_hero_image, "/images/career-bg.webp")}
+        title={hero?.title || "Careers"}
+        description={hero?.description}
+        image={mediaUrl(hero?.image, "/images/career-bg.webp")}
         position="center 40%"
       />
 
@@ -143,6 +119,7 @@ const Careers = () => {
             <button
               key={category}
               className={`chip ${activeCategory === category ? "active" : ""}`}
+              aria-pressed={activeCategory === category}
               onClick={() => setActiveCategory(category)}
             >
               {category}

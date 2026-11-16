@@ -24,8 +24,13 @@ const PageBanner = ({
         <div className="banner-content">
           <h1>{title}</h1>
 
+          {/* a div, not a <p>: CMS descriptions arrive as <p>/<div> markup,
+              which can't nest in a <p> and would break hydration */}
           {description && (
-            <p dangerouslySetInnerHTML={{ __html: description }} />
+            <div
+              className="banner-description"
+              dangerouslySetInnerHTML={{ __html: description }}
+            />
           )}
 
           {children}

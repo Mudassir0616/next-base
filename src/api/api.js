@@ -59,15 +59,8 @@ export const BlogCategoryApi = new APIBase({
 });
 
 ////////////////////// Declared, no page yet //////////////////////
-// Endpoints the reference backend serves that a clone usually wants next.
-
-export const CaseStudyListApi = new APIBase({
-    baseURL: `${BASE_URL}/api/case-study/`,
-});
-
-export const CaseStudyCategoryApi = new APIBase({
-    baseURL: `${BASE_URL}/api/case-study-category/`,
-});
+// Served by the reference backend (empty there today); the page a clone
+// usually builds next.
 
 export const testimonialAPI = new APIBase({
     baseURL: `${BASE_URL}/api/testimonial/`,

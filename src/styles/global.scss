@@ -299,10 +299,25 @@ button {
                 }
 
                 .categories-dropdown {
+                    // a <button> (keyboard-operable), dressed as plain text
+                    appearance: none;
+                    background: none;
+                    border: 0;
+                    padding: 0;
+                    margin: 0;
+                    color: inherit;
+                    cursor: pointer;
+
                     display: flex;
                     align-items: center;
                     gap: 0px;
                     font-size: 18px;
+
+                    &:focus-visible {
+                        outline: 2px solid $primary-color;
+                        outline-offset: 4px;
+                        border-radius: 2px;
+                    }
 
                     &.active {
                         color: $primary-color;

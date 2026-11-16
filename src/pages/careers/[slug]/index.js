@@ -1,14 +1,13 @@
 import JobDetails from "@/components/Careers/JobDetails";
 import Seo from "@/components/common/Seo";
-import { fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from "@/utils/functionUtils";
-import { mapCareer } from "@/utils/mappers";
+import { assertCmsData, fetchApi, fetchPageSeo, REVALIDATE_SECONDS } from "@/utils/functionUtils";
 import { breadcrumbSchema, jobPostingSchema } from "@/utils/seo";
 import React from "react";
 
 const Index = ({ job, relatedJobs }) => {
     const path = `/careers/${job?.slug}`;
     // every opening carries the same short_description, so lead with the role
-    const description = job?.about || job?.description;
+    const description = job?.about_role || job?.short_description;
 
     return (
         <>
@@ -22,9 +21,9 @@ const Index = ({ job, relatedJobs }) => {
                 image={job?.image}
                 path={path}
                 type="article"
-                publishedTime={job?.posted}
+                publishedTime={job?.created_at}
                 // a closed opening still renders, it just should not be indexed
-                noindex={!job?.is_active}
+                noindex={job?.is_active === false}
                 jsonLd={[
                     jobPostingSchema(job, path),
                     breadcrumbSchema([
@@ -55,7 +54,10 @@ export async function getStaticProps({ params }) {
     const res = await fetchApi(
         `/api/career/?slug=${encodeURIComponent(params.slug)}`,
     );
-    const job = mapCareer(res?.results?.[0]);
+    // a failed request is not "this job doesn't exist" — don't cache a 404 for it
+    assertCmsData(res);
+
+    const job = res?.results?.[0];
 
     if (!job) {
         return { notFound: true, revalidate: REVALIDATE_SECONDS };
@@ -68,7 +70,6 @@ export async function getStaticProps({ params }) {
     ]);
 
     const relatedJobs = (related_res?.results || [])
-        .map((record) => mapCareer(record))
         .filter((record) => record.slug !== job.slug)
         .slice(0, 2);
 

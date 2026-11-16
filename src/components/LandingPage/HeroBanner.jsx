@@ -4,6 +4,7 @@ import { Autoplay, EffectFade } from "swiper/modules";
 import "swiper/css/effect-fade";
 import { useSiteSetting } from "@/context/useSiteSettings";
 import { highlight, mediaUrl } from "@/utils/functionUtils";
+import CmsImage from "../common/CmsImage";
 
 const HeroBanner = () => {
   const router = useRouter();
@@ -36,7 +37,14 @@ const HeroBanner = () => {
         {images.map((image, index) => (
           <SwiperSlide key={index}>
             <div className="banner-image">
-              <img src={image} alt="Hero Banner" />
+              <CmsImage
+                src={image}
+                alt=""
+                width={1920}
+                height={1080}
+                sizes="100vw"
+                preload={index === 0}
+              />
             </div>
           </SwiperSlide>
         ))}

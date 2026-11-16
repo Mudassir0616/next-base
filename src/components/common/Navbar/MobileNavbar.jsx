@@ -28,7 +28,12 @@ const MobileNavbar = ({ check, openSubMenu, toggleSubMenu, onNavigate }) => {
                 role="button"
                 tabIndex={0}
                 aria-expanded={Boolean(openSubMenu?.[item.label])}
-                onKeyDown={(e) => e.key === "Enter" && toggleSubMenu(item.label)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggleSubMenu(item.label);
+                  }
+                }}
               >
                 <p>{item.label}</p>
 

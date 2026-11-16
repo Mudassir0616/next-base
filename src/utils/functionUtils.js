@@ -155,6 +155,26 @@ export function normalizePath(input) {
 export const REVALIDATE_SECONDS = 60;
 
 /**
+ * Call in getStaticProps with the `fetchApi` payloads a page cannot render
+ * without (`null` means the request failed).
+ *
+ *  - During `next build` (and `next dev`) a failure is tolerated: the page is
+ *    generated with what it has and refills on its first revalidation, so a
+ *    CMS outage can never fail a build.
+ *  - At runtime it throws. Next keeps serving the last successfully generated
+ *    page when a regeneration throws — far better than caching an empty list,
+ *    or a 404 for a post that exists, for everyone until the next window.
+ */
+export const assertCmsData = (...payloads) => {
+    if (payloads.every((payload) => payload !== null)) return;
+
+    const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+    if (isBuild || process.env.NODE_ENV !== "production") return;
+
+    throw new Error("CMS unavailable — keeping the previously generated page");
+};
+
+/**
  * `export const getStaticProps = seoStaticProps("/faqs", { title: "..." })` —
  * the whole getStaticProps of a page whose content is fetched client-side.
  */

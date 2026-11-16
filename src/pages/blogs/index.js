@@ -1,9 +1,15 @@
-import Blogs from "@/components/Blogs/Blogs";
+import Blogs, { blogListQuery, toBlogPage } from "@/components/Blogs/Blogs";
 import Seo from "@/components/common/Seo";
-import { seoStaticProps } from "@/utils/functionUtils";
+import {
+    assertCmsData,
+    fetchApi,
+    fetchPageSeo,
+    listResults,
+    REVALIDATE_SECONDS,
+} from "@/utils/functionUtils";
 import { breadcrumbSchema } from "@/utils/seo";
 
-const Index = ({ seo }) => {
+const Index = ({ seo, initialPage, categories }) => {
     return (
         <>
             <Seo
@@ -19,14 +25,37 @@ const Index = ({ seo }) => {
                 ]}
             />
 
-            <Blogs />
+            <Blogs hero={seo} initialPage={initialPage} categories={categories} />
         </>
     );
 };
 
-export const getStaticProps = seoStaticProps("/blogs", {
-    description: "our_blog_hero_description",
-    image: "our_blog_hero_image",
-});
+export async function getStaticProps() {
+    const [{ seoHead, seo }, blogs, categories] = await Promise.all([
+        fetchPageSeo("/blogs", {
+            title: "our_blog_hero_title",
+            description: "our_blog_hero_description",
+            image: "our_blog_hero_image",
+        }),
+        // the default view; filtered views are fetched in the browser
+        fetchApi(`/api/blog/${blogListQuery()}`),
+        fetchApi("/api/blog-category/?page_size=100"),
+    ]);
+
+    assertCmsData(blogs, categories);
+
+    return {
+        props: {
+            seoHead,
+            seo,
+            initialPage: toBlogPage(blogs),
+            categories: listResults(categories).map((category) => ({
+                id: category.id ?? null,
+                category: category.category ?? "",
+            })),
+        },
+        revalidate: REVALIDATE_SECONDS,
+    };
+}
 
 export default Index;

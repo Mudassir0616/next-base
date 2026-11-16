@@ -7,13 +7,12 @@ import {
 } from "@mui/material";
 import { ChevronLeft, ChevronRight, Tune } from "@mui/icons-material";
 import React, { useEffect, useState } from "react";
-import { BlogCategoryApi, BlogListApi } from "@/api/api";
+import { BlogListApi } from "@/api/api";
 import { useRouter } from "next/router";
 import { useSearchParams } from "next/navigation";
 import PageBanner from "../common/PageBanner";
 import BlogCard from "./BlogCard";
 import { useLenisContext } from "@/hooks/useLenis";
-import { useSiteSetting } from "@/context/useSiteSettings";
 import { mediaUrl } from "@/utils/functionUtils";
 
 const PAGE_SIZE = 9;
@@ -22,6 +21,39 @@ const SORT_OPTIONS = [
   { label: "Newest first", value: "-created_at" },
   { label: "Oldest first", value: "created_at" },
 ];
+
+/** Query string for one page of the listing — shared with getStaticProps. */
+export const blogListQuery = ({
+  page = 1,
+  order_by = SORT_OPTIONS[0].value,
+  categories = [],
+  title = "",
+} = {}) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(PAGE_SIZE),
+    nested: "True",
+    depth: "3",
+    order_by,
+  });
+
+  categories.forEach((id) => params.append("category", id));
+  if (title) params.set("title", title);
+
+  return `?${params.toString()}`;
+};
+
+/** A listing response -> the blog records and pagination the page renders. */
+export const toBlogPage = (res, page = 1) => ({
+  blogs: res?.results || [],
+  pagination: {
+    count: res?.last_page || Math.ceil((res?.total_items || 0) / PAGE_SIZE),
+    currentPage: res?.current_page || page,
+    totalItems: res?.total_items || 0,
+  },
+});
+
+const EMPTY_PAGE = toBlogPage(null);
 
 const CustomCheckbox = styled(Checkbox)(() => ({
   "&.Mui-checked": {
@@ -56,77 +88,47 @@ const CustomPagination = styled(Pagination)(() => ({
   justifyContent: "center",
 }));
 
-const Blogs = () => {
+// `initialPage` (the default view: page 1, newest first, every category),
+// `categories` and `hero` come from the page's getStaticProps, so the first
+// page of articles is in the prerendered HTML. Anything the URL filters is
+// fetched in the browser.
+const Blogs = ({ hero, initialPage = EMPTY_PAGE, categories = [] }) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lenisRef = useLenisContext();
-  const { settings } = useSiteSetting();
 
   // mobile only: filters are staged in the sheet and committed on "Apply Filter"
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const [blogs, setBlogs] = useState([]);
-  const [blogCategories, setBlogCategories] = useState([]);
+  const blogCategories = categories;
+  const [blogs, setBlogs] = useState(initialPage.blogs);
+  const [pagination, setPagination] = useState(initialPage.pagination);
   const [loading, setloading] = useState(false);
   const [selected_categories, setSelectedCategories] = useState([]);
   const [search_term, setSearchTerm] = useState("");
   const [sort_by, setSortBy] = useState(SORT_OPTIONS[0].value);
-  const [pagination, setPagination] = useState({
-    count: 0,
-    next: null,
-    previous: null,
-    currentPage: 1,
-    totalItems: 0,
-  });
 
   const fetch_blogs = async (
-    category_ids = "",
+    category_ids = [],
     s_term = "",
     page = 1,
     order_by = SORT_OPTIONS[0].value,
   ) => {
     setloading(true);
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: String(PAGE_SIZE),
-        nested: "True",
-        depth: "3",
-        order_by,
-      });
+      const res = await BlogListApi.get(
+        blogListQuery({ page, order_by, categories: category_ids, title: s_term }),
+      );
+      const next = toBlogPage(res, page);
 
-      category_ids.forEach((id) => params.append("category", id));
-      if (s_term) params.set("title", s_term);
-
-      const res = await BlogListApi.get(`?${params.toString()}`);
-
-      setBlogs(res?.results || []);
-      setPagination({
-        count: res?.last_page || Math.ceil((res?.total_items || 0) / PAGE_SIZE),
-        next: res?.links?.next,
-        previous: res?.links?.previous,
-        currentPage: res?.current_page || page,
-        totalItems: res?.total_items || 0,
-      });
+      setBlogs(next.blogs);
+      setPagination(next.pagination);
     } catch (err) {
       console.error("Error fetching blogs:", err);
     } finally {
       setloading(false);
     }
   };
-
-  const fetchBlogcategories = async () => {
-    try {
-      const res = await BlogCategoryApi.get(``);
-      setBlogCategories(res?.results);
-    } catch (err) {
-      console.error("Error fetching blog categories:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchBlogcategories();
-  }, []);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -152,6 +154,8 @@ const Blogs = () => {
   // The URL is the source of truth for filters. Before the router is ready the
   // query string reads as empty, so fetching then would race an unfiltered
   // request against the real one.
+  const query = searchParams.toString();
+
   useEffect(() => {
     if (!router.isReady) return;
 
@@ -164,8 +168,15 @@ const Blogs = () => {
     setSelectedCategories(categories);
     setSortBy(order_by);
 
+    // a bare /blogs is exactly the page getStaticProps already rendered
+    if (!query) {
+      setBlogs(initialPage.blogs);
+      setPagination(initialPage.pagination);
+      return;
+    }
+
     fetch_blogs(categories, q, page, order_by);
-  }, [router.isReady, searchParams.toString()]);
+  }, [router.isReady, query, initialPage]);
 
   // Filters apply straight away — the URL stays the source of truth
   const push_filters = (categories, order_by = sort_by) => {
@@ -262,12 +273,9 @@ const Blogs = () => {
   return (
     <div className="blogs-page">
       <PageBanner
-        title={settings?.our_blog_hero_title || "Insights & Blog"}
-        description={
-          settings?.our_blog_hero_description ||
-          "Thought leadership on recruitment, HR, finance & advisory solutions."
-        }
-        image={mediaUrl(settings?.our_blog_hero_image, "/images/blog-bg.webp")}
+        title={hero?.title || "Insights & Blog"}
+        description={hero?.description}
+        image={mediaUrl(hero?.image, "/images/blog-bg.webp")}
         position="center 45%"
       />
 

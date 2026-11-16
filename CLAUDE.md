@@ -14,7 +14,7 @@ That framing decides most judgment calls:
 
 ### Three layers — know which one you are touching
 
-1. **Base infrastructure** (shared by every client site; change deliberately, keep generic): `APIBase` + `fetchApi` + `fetchPageSeo`, `Seo` + `utils/seo.js` + `renderHeadTags`, sitemap/robots routes, `site.config.js`, `GlobalForm`, `PageBanner`, `MessagePanel`, `ContactFrame`, `LegalPage`, `PopupForm`, the contexts, `theme.js`, `mappers.js`.
+1. **Base infrastructure** (shared by every client site; change deliberately, keep generic): `APIBase` + `fetchApi` + `fetchPageSeo`, `Seo` + `utils/seo.js` + `renderHeadTags`, sitemap/robots routes, `site.config.js`, `GlobalForm`, `CmsImage`, `PageBanner`, `MessagePanel`, `ContactFrame`, `LegalPage`, `PopupForm`, `FaqItem`, `useDialogFocus`, the contexts, `theme.js`.
 2. **Prebuilt pages** — the eleven routes above. Structure is reusable; they are rebranded per client, not rewritten.
 3. **Reference content** — Grovanta's copy, images, nav links and its live backend. Not a pattern to copy. The fallback `NEXT_PUBLIC_API_BASE_URL` (`https://api.grovantagroup.com`) is a real client CMS; `npm run build` and `npm run dev` hit it when no `.env` exists.
 
@@ -49,7 +49,7 @@ On Next.js 16 / React 19.3. Things that are the way they are on purpose:
 
 The single most important distinction in the codebase.
 
-1. **Server-side (`getStaticProps` / `getStaticPaths` / `getServerSideProps`)** → `fetchApi(path)` from [src/utils/functionUtils.js](src/utils/functionUtils.js). A bare `fetch` that swallows errors and returns `null`, so an unreachable backend cannot fail a build.
+1. **Server-side (`getStaticProps` / `getStaticPaths` / `getServerSideProps`)** → `fetchApi(path)` from [src/utils/functionUtils.js](src/utils/functionUtils.js). A bare `fetch` that swallows errors and returns `null` (after one retry on a network error), so an unreachable backend cannot fail a build. Pass the payloads a page can't render without to **`assertCmsData(...)`**: during a build a `null` is tolerated (the page refills on revalidation), but at runtime it throws, which makes Next keep serving the last good page instead of caching an empty list — or a 404 for a post that exists — for everyone. Distinguish "request failed" (`null` payload) from "not found" (empty `results`) before returning `notFound`.
 2. **Client-side (in components, inside `useEffect`)** → the `APIBase` instances exported from [src/api/api.js](src/api/api.js) (`FaqApi`, `BlogListApi`, `CareerApi`, `LeadershipApi`, `ContactApi`, …).
 
 **Never call an `APIBase` instance from `getStaticProps` or during render.** It is a browser client: it toasts, and a failed request throws, which would fail a build. (It no longer *crashes* on the server — its `localStorage` read is guarded — but that is not a licence to use it there.) Conversely, a new endpoint belongs in `src/api/api.js` as a named `APIBase` instance, never as an inline `axios`/`fetch` in a component.
@@ -83,13 +83,29 @@ CMS dates carry their own UTC offset. Format them with `formatCmsDate()` (functi
 
 ## Page / component layout
 
-`src/pages/**` files are thin: `getStaticProps` (SEO head data, plus the record for detail pages) and `<Seo>`, then one component from `src/components/<Feature>/`. Feature components (`Faqs/Index.jsx`, `Careers/Index.jsx`, `BoardMembers/Index.jsx`, …) fetch their own content client-side and hold the markup. Follow that split for new pages. A page whose content *is* a site-setting field (privacy, terms) renders it from `getStaticProps` instead, through `LegalPage`.
+`src/pages/**` files are thin: `getStaticProps` (SEO head data plus the page's content) and `<Seo>`, then one component from `src/components/<Feature>/` that receives the content as props and holds the markup. **CMS records pass through untouched**: `getStaticProps` hands `listResults(payload)` (or `payload.results[0]` for a detail page) straight to the component, and the component reads the CMS's own field names (`job.job_type`, `job.api_category?.name`, `blog.category?.category`, `faq.answer`). There is deliberately no mapping/view-model layer — a developer reading the API response sees the same names in the JSX. Don't reintroduce one; small presentation logic (grouping FAQs by category, joining a label) lives inline in the component that needs it. That's how FAQs, our team, careers, the blog list (first page — filtered views are fetched in the browser), the detail pages and the policy pages (`LegalPage`) work. Follow that shape for new pages. Hero copy reaches a component as a `hero` prop — the `seo` object `fetchPageSeo` returns, with `title`/`description`/`image` mapped to the page's site-setting hero fields. **Still client-fetched** (known debt, not the pattern): the home page sections (`useSiteSetting`, home blogs slider), the contact details, and job-detail's "About" text.
 
-Shared building blocks in `src/components/common/`: `PageBanner`, `ContactFrame` (closing CTA band), `MessagePanel` (thank-you / 404 shells), `LegalPage` (CMS policy pages), `GlobalForm`, `PopupForm/`, `Seo`.
+Props must be JSON-serializable. Raw API JSON always is (JSON has no `undefined`); anything you compute in `getStaticProps` must use `null`, not `undefined`. Whole records go into the page's HTML as page data — fine at listing sizes (the reference pages ship 1–14 KB), but don't pass a heavy endpoint (e.g. `depth=3` with every article body) for hundreds of records.
+
+**CMS HTML never goes inside a `<p>`.** The CMS sends rich text as `<p>…</p>`/`<div>…</div>`; injected into a `<p>` via `dangerouslySetInnerHTML`, it's invalid nesting that the browser repairs in server HTML, so React's hydration no longer matches. Use a `<div>` (see `PageBanner`'s `.banner-description`, `JobCard`'s `.description`).
+
+Shared building blocks in `src/components/common/`: `PageBanner`, `ContactFrame` (closing CTA band), `MessagePanel` (thank-you / 404 shells), `LegalPage` (CMS policy pages), `FaqItem`, `CmsImage`, `GlobalForm`, `PopupForm/`, `Seo`.
+
+- **PopupForm**'s styles are the "Popup Enquiry Form" section at the end of `main.scss`, kept **top-level**: MUI's `<Modal>` portals it to `<body>`, so a rule nested under a page class never matches. The Box's `sx` owns the dialog shell (width, max-height, scroll, padding); `.popup-form` is only the layout inside (image column + form). Its name/company pair stacks by a container query on the form column, not a viewport breakpoint. Only the auto-open timer opens it (2 min) — to see it, fast-forward the clock (Playwright `page.clock`) in a fresh browser context, since dismissing it is remembered in `localStorage`.
+
+- **CMS images go through [`CmsImage`](src/components/common/CmsImage.jsx)** (next/image), never a bare `<img>` or `next/image` directly. It optimizes only what Next can: raster files in `public/` and uploads under the CMS's `/media/` (the single `remotePatterns` entry in next.config, derived from `NEXT_PUBLIC_API_BASE_URL` incl. protocol/port). SVGs, other hosts and private-IP backends are served `unoptimized` instead of throwing. Its `width`/`height` only set the reserved aspect ratio — the stylesheet sizes the element — so always pass a `sizes` matching the rendered width. Use `preload` (Next 16 deprecated `priority`) only for the above-the-fold image of a page. Static icons/logos stay plain `<img>`.
 
 - **Navigation lives in `site.config.js`** (`nav` for the header + mobile menu, `footer` for the footer columns and legal links). Never hardcode a link list in Navbar/MobileNavbar/Footer, and only add routes that exist in `src/pages` — the base previously shipped links to `/about-us`, `/case-study` and `/expertise`, which 404.
 - **`GlobalForm`** ([GlobalForm.jsx](src/components/common/GlobalForm.jsx); field types and options are in its header comment) builds its Yup schema from the field config — format checks (email, tel, url, file type/size via `accept`/`max_size`) apply even to optional fields. Prefer `required` + `validation_message` over passing `custom_schema`, which replaces the generated schema wholesale and drops those checks. Its theme is layered on the app theme (`createTheme(outerTheme, …)`); keep it that way, or forms lose Poppins and the zIndex scale. Keep `FileUpload`/`ImageUpload` at module scope.
 - The career forms share their resume field from [Careers/resumeField.js](src/components/Careers/resumeField.js); its `helper_text` must agree with its `accept` / `max_size`.
+
+### Accessibility conventions
+
+- Anything clickable that isn't a link is a `<button type="button">` — restyled with an `appearance/background/border/padding` reset plus a `:focus-visible` outline (see `.categories-dropdown`, `.faq-question`) — not a `div` with `onClick`. Where a `div role="button"` remains (hamburger, mobile accordion), it handles Enter **and** Space.
+- Disclosures carry `aria-expanded` + `aria-controls`; collapsed content that stays in the DOM is `inert` (`FaqItem` puts it on a plain div — `motion.div` may drop unknown props). Filter chips/tabs carry `aria-pressed`.
+- Desktop nav dropdowns open on hover *and* click/Enter/Space; Escape closes and returns focus to the button, focus leaving closes, route changes close. A pointer click only ever opens (hover already did) — toggling would shut it under the cursor.
+- A hand-built modal uses [`useDialogFocus(ref, open)`](src/hooks/useDialogFocus.js) (focus in, Tab trapped, focus returned to the opener) with `role="dialog"`, `aria-modal`, `aria-labelledby`, `tabIndex={-1}`, and handles Escape itself. MUI `<Modal>` (PopupForm) does all of this already.
+- Decorative images get `alt=""`; an icon inside a link that has an `aria-label` is decorative.
 
 ## SEO
 
@@ -104,7 +120,9 @@ Brand/domain values come from [src/site.config.js](src/site.config.js); the help
 
 `_app` renders only a keyed fallback `<title>`/description (overridden by every `<Seo>`), favicons and viewport.
 
-**Known gap:** the listing pages' *content* (FAQs, team, careers, blog list, contact details) is fetched client-side, so their prerendered HTML has correct head tags but no body text. Moving that into `getStaticProps` is a deliberate per-page project, not a side quest.
+Structured data: `websiteSchema()` + `organizationDetailsSchema(setting)` on home, `faqPageSchema()` on `/faqs`, `articleSchema` / `jobPostingSchema` on detail pages, `breadcrumbSchema` on inner pages. Every schema refers to the organization by one `@id` (`${SITE_URL}/#organization`). `organizationDetailsSchema` reads the site-setting record, so call it in `getStaticProps` and pass the result as a prop; its `sameAs` drops placeholder social URLs (bare hosts, `linkedin.com/in/`), which is all the reference CMS holds today.
+
+**Known gap:** the home page's sections are still rendered client-side, so its prerendered HTML has head tags and structured data but little body text (and the hero shows the local fallback image until settings load).
 
 `/sitemap.xml` and `/robots.txt` are `getServerSideProps` routes ([src/pages/sitemap.xml.js](src/pages/sitemap.xml.js), [src/pages/robots.txt.js](src/pages/robots.txt.js)), not files in `public/`, so they track `NEXT_PUBLIC_SITE_URL` and pick up new CMS records without a deploy. **Add a sitemap section by adding a collection to `site.config.js`, not by editing the route.** `robots.txt` serves `Disallow: /` to any host that isn't the one `NEXT_PUBLIC_SITE_URL` names, which de-indexes staging and preview deploys by default.
 
@@ -112,7 +130,7 @@ Brand/domain values come from [src/site.config.js](src/site.config.js); the help
 
 `SeoHeadContext` → `ThemeProvider` (MUI) → `SettingsProvider` → `PopupFormProvider` → `LenisContext`, wrapping `Navbar` / page / `Footer`.
 
-- `useSiteSetting()` exposes `{ settings, loading }` for the single `/api/site-setting/` record, fetched in the browser. `settings` is `{}` until it lands; `loading` is true until the request settles — use it to hold space (HeroBanner's skeleton) rather than rendering empty headings. Most hero titles, images, contact details and socials read from it, with hardcoded fallbacks in the components.
+- `useSiteSetting()` exposes `{ settings, loading }` for the single `/api/site-setting/` record, fetched in the browser. `settings` is `{}` until it lands; `loading` is true until the request settles — use it to hold space (HeroBanner's skeleton) rather than rendering empty headings. The home sections, contact details, footer and socials read from it, with hardcoded fallbacks in the components; server-rendered pages get their hero copy from `getStaticProps` instead (the `hero` prop) — prefer that for anything new, since `useSiteSetting` content isn't in the prerendered HTML.
 - [src/theme.js](src/theme.js) raises MUI's whole `zIndex` scale (modal 10001, …) because the site chrome sits at 9999+. Keep overlay z-indexes consistent with it rather than patching one component. MUI is intentionally held at v6 — v9 is a separate migration.
 - Lenis smooth scroll is instantiated once and shared via `LenisContext`; use `useLenisContext()` rather than creating another instance.
 
@@ -132,13 +150,13 @@ npx sass@1.83.4 --no-source-map src/styles/global.scss src/styles/global.css
 - `mediaUrl(path, fallback)` — prefixes API-relative `/media/...` paths with `BASE_URL`, falling back to a local asset so a blank CMS field never renders a broken image.
 - `highlight(value)` — the CMS marks accent text with square brackets (`"From Strategy to [Operational Excellence]"`); this turns them into `<span>` for `dangerouslySetInnerHTML`.
 - `stripHtml`, `splitPipeList` — several CMS fields arrive as markup or pipe-separated lists.
-- [src/utils/mappers.js](src/utils/mappers.js) reshapes the flat `<section>_<field>` + `api_*` CMS records into the nested shape components expect. Mapping goes there, not in components.
+- Read CMS fields by their API names in components; `api_*` keys hold the repeating blocks/related records (`api_category`, `api_responsibility`, `api_recommended`, …). A boolean flag that may be missing is tested as `record.is_active !== false` (missing means active).
 
 ## Environment
 
 `.env` (gitignored) holds `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_SITE_URL`; `.env.example` is committed and documents both. Their fallbacks live in `site.config.js` — `src/api/api.js` re-exports one as `BASE_URL`. Keep `.env.example` in sync when adding a variable.
 
-**Dangling asset references** (known, left alone deliberately): `public/` ships only `favicon.ico`, `images/logo.png` and the icons `ig`, `in`, `wp`, `x`, `yt`. Everything else the code names is missing and a clone is expected to supply it — the `/favicon/*` set `_app.js` links, the default social card `/images/banner-1.webp`, every page-banner fallback (`about-bg`, `blog-bg`, `career-bg`, `career-detail-bg`, `contact-bg`, `faq-bg` `.webp`), `leader1.webp`, `g-logo.png`, `popup-frame.jpg`, `thank-you.svg`, and the icons `tick`, `call`, `facebook`, `instagram` (only `ig.svg` exists), `advise`, `design`, `implement`, `operations`, `improvments`. In the browser these show up as 404s in the console; they are not code bugs.
+**Dangling asset references** (known, left alone deliberately): `public/` ships only `favicon.ico`, `images/logo.png`, `images/popup-frame.jpg` and the icons `ig`, `in`, `wp`, `x`, `yt`. Everything else the code names is missing and a clone is expected to supply it — the `/favicon/*` set `_app.js` links, the default social card `/images/banner-1.webp`, every page-banner fallback (`about-bg`, `blog-bg`, `career-bg`, `career-detail-bg`, `contact-bg`, `faq-bg` `.webp`), `leader1.webp`, `g-logo.png`, `thank-you.svg`, and the icons `tick`, `call`, `facebook`, `instagram` (only `ig.svg` exists), `advise`, `design`, `implement`, `operations`, `improvments`. In the browser these show up as 404s in the console; they are not code bugs.
 
 ## Reference content still hardcoded in `src/`
 
@@ -150,4 +168,4 @@ Grovanta-specific (or placeholder) literals that a clone must rewrite by hand. M
 
 ## Keep it lean
 
-The base was cleared of dead code inherited from earlier client projects (unused hooks, a 900-line fixtures/utils file, SweetAlert, skeleton loaders, auth endpoints, ~2,600 lines of CSS for pages that don't exist, and six unused npm packages). Don't reintroduce speculative code: add a hook, helper, endpoint or dependency when a page uses it. `CaseStudyListApi`, `CaseStudyCategoryApi` and `testimonialAPI` in `api.js` are the deliberate exception — real endpoints of the reference backend, declared for the next pages a clone usually builds. `@emotion/*` look unused but are MUI peer deps, and `date-fns` backs the date-picker adapter — keep them.
+The base was cleared of dead code inherited from earlier client projects (unused hooks, a 900-line fixtures/utils file, SweetAlert, skeleton loaders, auth endpoints, ~2,600 lines of CSS for pages that don't exist, and six unused npm packages). Don't reintroduce speculative code: add a hook, helper, endpoint or dependency when a page uses it. `testimonialAPI` in `api.js` is the deliberate exception — a real (currently empty) endpoint of the reference backend, declared for the page a clone usually builds next. (The case-study instances that used to sit beside it pointed at endpoints the backend doesn't have — `/api/case-study/` 404s — and were removed.) `@emotion/*` look unused but are MUI peer deps, and `date-fns` backs the date-picker adapter — keep them.

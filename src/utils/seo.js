@@ -1,6 +1,6 @@
 import { BASE_URL } from "@/api/api";
 import site, { SITE_URL } from "@/site.config";
-import { normalizePath } from "./functionUtils";
+import { normalizePath, splitPipeList } from "./functionUtils";
 
 /**
  * SEO helpers for the CMS-driven pages.
@@ -147,12 +147,100 @@ export const cleanHeadHtml = (html) => {
 /* JSON-LD                                                             */
 /* ------------------------------------------------------------------ */
 
+// One id per entity, so every schema on the site that mentions the
+// organization (home, article publisher, job hiringOrganization) is read as
+// the same node.
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+
 export const organizationSchema = () => ({
     "@type": "Organization",
+    "@id": ORGANIZATION_ID,
     name: SITE_NAME,
     url: SITE_URL,
     logo: absoluteUrl(site.logo),
 });
+
+// A social field only counts as a profile when it names one. CMS records hold
+// placeholders — "https://www.instagram.com/", "https://www.linkedin.com/in/"
+// — so a bare host, or a host plus only a section prefix, is rejected.
+const SECTION_PREFIXES = new Set(["in", "company", "channel", "c", "user", "pages", "groups"]);
+
+const profileUrl = (value) => {
+    try {
+        const url = new URL(value);
+        const segments = url.pathname.split("/").filter(Boolean);
+        const named =
+            segments.length > 1 ||
+            (segments.length === 1 && !SECTION_PREFIXES.has(segments[0].toLowerCase()));
+
+        return /^https?:$/.test(url.protocol) && named ? url.href : null;
+    } catch {
+        return null;
+    }
+};
+
+const SOCIAL_FIELDS = ["linkedin", "instagram", "youtube", "facebook", "twitter"];
+
+/**
+ * The full Organization node for the home page, enriched from the
+ * site-setting record (social profiles, contact email/phone). Build it in
+ * getStaticProps — the setting record is too large to ship as props.
+ */
+export const organizationDetailsSchema = (setting = {}) => {
+    const sameAs = [...new Set(SOCIAL_FIELDS.map((field) => profileUrl(setting[field])).filter(Boolean))];
+    const telephone =
+        setting.api_contact_number?.[0] || splitPipeList(setting.contact_number)[0];
+    const email = setting.email;
+
+    return {
+        "@context": "https://schema.org",
+        ...organizationSchema(),
+        ...(sameAs.length ? { sameAs } : {}),
+        ...(telephone || email
+            ? {
+                contactPoint: {
+                    "@type": "ContactPoint",
+                    contactType: "customer support",
+                    ...(telephone ? { telephone } : {}),
+                    ...(email ? { email } : {}),
+                },
+            }
+            : {}),
+    };
+};
+
+export const websiteSchema = () => ({
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": WEBSITE_ID,
+    name: SITE_NAME,
+    url: SITE_URL,
+    inLanguage: site.locale,
+    publisher: { "@id": ORGANIZATION_ID },
+});
+
+/**
+ * FAQPage from the `/api/faq/` records. Answers are flattened to text. Null
+ * when there are no questions, so <Seo> skips it.
+ */
+export const faqPageSchema = (faqs = []) => {
+    const questions = faqs
+        .map((faq) => ({ name: plainText(faq.question), text: plainText(faq.answer) }))
+        .filter((faq) => faq.name && faq.text);
+
+    if (!questions.length) return null;
+
+    return {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: questions.map((faq) => ({
+            "@type": "Question",
+            name: faq.name,
+            acceptedAnswer: { "@type": "Answer", text: faq.text },
+        })),
+    };
+};
 
 export const breadcrumbSchema = (items) => ({
     "@context": "https://schema.org",
@@ -197,7 +285,7 @@ const EMPLOYMENT_TYPES = {
 };
 
 export const jobPostingSchema = (job, path) => {
-    const employment = plainText(job?.type)
+    const employment = plainText(job?.job_type)
         .toUpperCase()
         .replace(/[\s-]+/g, "_");
     // the CMS writes the work mode into the location ("Mumbai / On-site")
@@ -209,14 +297,16 @@ export const jobPostingSchema = (job, path) => {
         "@context": "https://schema.org",
         "@type": "JobPosting",
         title: plainText(job?.title),
-        description: job?.about || job?.description || "",
+        description: job?.about_role || job?.short_description || "",
         url: canonicalUrl(path),
         ...(job?.id ? { identifier: { "@type": "PropertyValue", name: SITE_NAME, value: String(job.id) } } : {}),
-        ...(job?.posted ? { datePosted: job.posted } : {}),
+        ...(job?.created_at ? { datePosted: job.created_at } : {}),
         ...(employment
             ? { employmentType: EMPLOYMENT_TYPES[employment] || employment }
             : {}),
-        ...(job?.category ? { occupationalCategory: plainText(job.category) } : {}),
+        ...(job?.api_category?.name
+            ? { occupationalCategory: plainText(job.api_category.name) }
+            : {}),
         hiringOrganization: organizationSchema(),
         ...(remote
             ? {

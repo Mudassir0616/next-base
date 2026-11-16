@@ -22,6 +22,26 @@ const Navbar = () => {
   // label of the open desktop dropdown, so hovering one doesn't open the others
   const [openMenu, setOpenMenu] = useState(null);
 
+  // a dropdown opened by click or keyboard closes once a link in it is used
+  useEffect(() => {
+    const close = () => setOpenMenu(null);
+    router.events.on("routeChangeStart", close);
+    return () => router.events.off("routeChangeStart", close);
+  }, [router.events]);
+
+  // keyboard focus leaving a dropdown (Tab past its last link) closes it
+  const closeOnFocusOut = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(null);
+  };
+
+  const closeOnEscape = (event) => {
+    if (event.key !== "Escape") return;
+    setOpenMenu(null);
+    event.currentTarget.querySelector(".categories-dropdown")?.focus();
+  };
+
+  const toggleHamburger = () => setCheck((prev) => !prev);
+
   const toggleSubMenu = (menu) => {
     setOpenSubMenu((prevMenu) => ({
       ...prevMenu,
@@ -86,18 +106,42 @@ const Navbar = () => {
                     className="nav-item"
                     onMouseEnter={() => setOpenMenu(item.label)}
                     onMouseLeave={() => setOpenMenu(null)}
+                    onBlur={closeOnFocusOut}
+                    onKeyDown={closeOnEscape}
                   >
-                    <div
+                    {/* opens on hover, and on click / Enter / Space for
+                        keyboard and touch users */}
+                    <button
+                      type="button"
                       className={`categories-dropdown ${
                         openMenu === item.label ? "active" : ""
                       }`}
+                      aria-expanded={openMenu === item.label}
+                      aria-controls={`nav-menu-${item.label}`}
+                      onClick={(event) => {
+                        // A pointer click (detail > 0) lands on a menu that
+                        // hovering already opened — toggling would shut it
+                        // under the cursor, so it only opens; moving away
+                        // closes it. Enter/Space (detail 0) toggle.
+                        const pointer = event.detail > 0;
+                        setOpenMenu((open) =>
+                          pointer || open !== item.label ? item.label : null,
+                        );
+                      }}
                     >
                       <span>{item.label}</span>
-                      {openMenu === item.label ? <ExpandLess /> : <ExpandMore />}
-                    </div>
+                      {openMenu === item.label ? (
+                        <ExpandLess aria-hidden="true" />
+                      ) : (
+                        <ExpandMore aria-hidden="true" />
+                      )}
+                    </button>
 
                     {openMenu === item.label && (
-                      <ul className="dropdown-menu">
+                      <ul
+                        className="dropdown-menu"
+                        id={`nav-menu-${item.label}`}
+                      >
                         {item.children.map((link) => (
                           <li key={link.href}>
                             <Link href={link.href}>{link.label}</Link>
@@ -140,12 +184,17 @@ const Navbar = () => {
 
           <div
             className={`${check ? "active-nav" : ""} hamburger`}
-            onClick={() => setCheck((prev) => !prev)}
+            onClick={toggleHamburger}
             role="button"
             tabIndex={0}
             aria-label={check ? "Close menu" : "Open menu"}
             aria-expanded={check}
-            onKeyDown={(e) => e.key === "Enter" && setCheck((prev) => !prev)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggleHamburger();
+              }
+            }}
           >
             <span></span>
             <span></span>

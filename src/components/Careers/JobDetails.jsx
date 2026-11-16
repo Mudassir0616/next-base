@@ -93,11 +93,11 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
             <LocationOnOutlined /> {job?.location}
           </span>
           <span>
-            <AccessTimeOutlined /> {job?.type}
+            <AccessTimeOutlined /> {job?.job_type}
           </span>
-          {job?.posted && (
+          {job?.created_at && (
             <span>
-              <CalendarTodayOutlined /> Posted {formatCmsDate(job.posted)}
+              <CalendarTodayOutlined /> Posted {formatCmsDate(job.created_at)}
             </span>
           )}
         </div>
@@ -107,14 +107,14 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
         <div className="content-side">
           <div className="job-section">
             <h2>About the role</h2>
-            <div dangerouslySetInnerHTML={{ __html: job?.about || "" }} />
+            <div dangerouslySetInnerHTML={{ __html: job?.about_role || "" }} />
           </div>
 
           <div className="job-section">
             <h2>What you&apos;ll do</h2>
 
             <ul>
-              {job?.responsibilities?.map((item) => (
+              {job?.api_responsibility?.map((item) => (
                 <li key={item}>
                   <div className="icon-container">
                     <img src="/icons/tick.svg" alt="" />
@@ -130,7 +130,7 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
 
             <h4>Required Skills</h4>
             <ul>
-              {job?.required_skills?.map((item) => (
+              {job?.api_required_skill?.map((item) => (
                 <li key={item}>
                   <div className="icon-container">
                     <img src="/icons/tick.svg" alt="" />
@@ -142,7 +142,7 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
 
             <h4>Nice to Haves</h4>
             <ul className="plus-list">
-              {job?.nice_to_haves?.map((item) => (
+              {job?.api_nice_to_have?.map((item) => (
                 <li key={item}>
                   <div className="icon-container">
                     <AddCircle />
@@ -164,7 +164,7 @@ const JobDetails = ({ job, relatedJobs = [] }) => {
         </div>
 
         <div className="form-side">
-          {job?.is_active ? (
+          {job?.is_active !== false ? (
             <div className="application-form">
               <h3>Apply for this Role</h3>
               <p className="form-note">Fill in your details below</p>

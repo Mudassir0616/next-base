@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
  */
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 
+// keep the fallback in step with API_BASE_URL in src/site.config.js
+const cmsUrl = new URL(
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.grovantagroup.com",
+);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -18,13 +23,14 @@ const nextConfig = {
 
   images: {
     // CMS uploads are served from the API host, so next/image has to be told
-    // it may optimize them. Keep this in step with NEXT_PUBLIC_API_BASE_URL.
+    // it may optimize them. Derived from NEXT_PUBLIC_API_BASE_URL (protocol
+    // and port included, so an http://localhost:8000 backend matches too);
+    // CmsImage serves anything outside this pattern unoptimized.
     remotePatterns: [
       {
-        protocol: "https",
-        hostname: new URL(
-          process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.grovantagroup.com",
-        ).hostname,
+        protocol: cmsUrl.protocol.replace(":", ""),
+        hostname: cmsUrl.hostname,
+        ...(cmsUrl.port ? { port: cmsUrl.port } : {}),
         pathname: "/media/**",
       },
     ],

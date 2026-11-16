@@ -8,6 +8,7 @@ import "swiper/css";
 import { BASE_URL } from "@/api/api";
 import Link from "next/link";
 import site from "@/site.config";
+import CmsImage from "../common/CmsImage";
 import { formatCmsDate, mediaUrl } from "@/utils/functionUtils";
 
 const BlogDetails = ({ blog_data }) => {
@@ -37,9 +38,13 @@ const BlogDetails = ({ blog_data }) => {
         <div className="blog-detail-container">
           <div className="blog-details">
             <div className="img-container">
-              <img
+              <CmsImage
                 src={mediaUrl(blog_data?.thumbnail, site.defaultImage)}
                 alt={blog_data?.title || ""}
+                width={1200}
+                height={675}
+                sizes="(max-width: 900px) 100vw, 66vw"
+                preload
               />
             </div>
 

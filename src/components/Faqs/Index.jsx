@@ -1,45 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import PageBanner from "../common/PageBanner";
 import FAQItem from "../common/FaqItem";
 import ContactFrame from "../common/ContactFrame";
-import { FaqApi, FaqCategoryApi } from "@/api/api";
-import { useSiteSetting } from "@/context/useSiteSettings";
 import { mediaUrl } from "@/utils/functionUtils";
 
 const ALL_CATEGORIES = "All";
 
-const Faqs = () => {
-  const { settings } = useSiteSetting();
-
+// `categories`, `faqs` and `hero` come from the page's getStaticProps, so the
+// questions are in the prerendered HTML.
+const Faqs = ({ hero, categories = [], faqs = [] }) => {
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORIES);
   // keyed by `${category}-${index}` so one open item per category at a time
   const [openItem, setOpenItem] = useState(null);
-  const [faqCategories, setFaqCategories] = useState([]);
 
-  // The CMS keeps questions and categories apart, the page groups them.
-  const fetch_faqs = async () => {
-    try {
-      const [category_res, faq_res] = await Promise.all([
-        FaqCategoryApi.get(`?order_by=order_by`),
-        FaqApi.get(`?order_by=order_by&page_size=200`),
-      ]);
-
-      const faqs = faq_res?.results || [];
-
-      setFaqCategories(
-        (category_res?.results || []).map((category) => ({
-          name: category.name,
-          faqs: faqs.filter((faq) => faq.category === category.id),
-        })),
-      );
-    } catch (error) {
-      console.error("Failed to fetch faqs:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetch_faqs();
-  }, []);
+  // the CMS keeps questions and categories apart; group them for display
+  const faqCategories = categories.map((category) => ({
+    ...category,
+    faqs: faqs.filter((faq) => faq.category === category.id),
+  }));
 
   const faqFilters = [
     ALL_CATEGORIES,
@@ -57,9 +35,9 @@ const Faqs = () => {
   return (
     <div className="faqs-page">
       <PageBanner
-        title={settings?.our_faq_hero_title}
-        description={settings?.our_faq_hero_description}
-        image={mediaUrl(settings?.our_faq_hero_image, "/images/faq-bg.webp")}
+        title={hero?.title || "Frequently Asked Questions"}
+        description={hero?.description}
+        image={mediaUrl(hero?.image, "/images/faq-bg.webp")}
         position="center 45%"
       />
 
@@ -69,6 +47,7 @@ const Faqs = () => {
             <button
               key={filter}
               className={`chip ${activeCategory === filter ? "active" : ""}`}
+              aria-pressed={activeCategory === filter}
               onClick={() => setActiveCategory(filter)}
             >
               {filter}
@@ -77,7 +56,7 @@ const Faqs = () => {
         </div>
 
         {visibleCategories.map((category) => (
-          <div className="faq-category" key={category.name}>
+          <div className="faq-category" key={category.id || category.name}>
             <div className="category-header">
               <h2>{category.name}</h2>
               <span className="count">{category.faqs.length} Questions</span>
@@ -89,7 +68,8 @@ const Faqs = () => {
 
                 return (
                   <FAQItem
-                    key={key}
+                    key={faq.id || key}
+                    id={`faq-${faq.id || key}`}
                     faq={faq}
                     isOpen={openItem === key}
                     toggle={() => toggleItem(key)}

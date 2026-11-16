@@ -44,7 +44,7 @@
   --bs-black-rgb: 0, 0, 0;
   --bs-body-color-rgb: 24, 28, 50;
   --bs-body-bg-rgb: 255, 255, 255;
-  --bs-font-sans-serif: "Sora", sans-serif;
+  --bs-font-sans-serif: 'Sora', sans-serif;
   --bs-gradient: linear-gradient(180deg,
           rgba(255, 255, 255, 0.15),
           rgba(255, 255, 255, 0));
@@ -252,10 +252,22 @@ button {
     position: static;
   }
   .nav-links-container .nav-links .nav-item .categories-dropdown {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    cursor: pointer;
     display: flex;
     align-items: center;
     gap: 0px;
     font-size: 18px;
+  }
+  .nav-links-container .nav-links .nav-item .categories-dropdown:focus-visible {
+    outline: 2px solid #E0651F;
+    outline-offset: 4px;
+    border-radius: 2px;
   }
   .nav-links-container .nav-links .nav-item .categories-dropdown.active {
     color: #E0651F;
@@ -273,14 +285,6 @@ button {
     left: 0;
     right: 0;
     z-index: 20;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 30px;
-    padding: 35px 40px;
-    background: #FFFFFF;
-    border-radius: 0 0 8px 8px;
-    border: 1px solid #E6E6E6;
-    box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 20px;
   }
   .nav-links-container .nav-links .nav-item .mega-menu::before {
     content: "";
@@ -289,6 +293,16 @@ button {
     left: 0;
     right: 0;
     height: 12px;
+  }
+  .nav-links-container .nav-links .nav-item .mega-menu {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 30px;
+    padding: 35px 40px;
+    background: #FFFFFF;
+    border-radius: 0 0 8px 8px;
+    border: 1px solid #E6E6E6;
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 20px;
   }
   .nav-links-container .nav-links .nav-item .mega-menu .mega-column h4 {
     font-size: 18px;
@@ -1838,9 +1852,6 @@ img {
   columns: 4;
   column-gap: 20px;
   width: 100%;
-  /* Laptops and tablets */
-  /* Mobile landscape and small tablets */
-  /* Small mobile */
 }
 .masonry-grid .img-container {
   width: 100%;
@@ -1860,6 +1871,9 @@ img {
 .masonry-grid .img-container:hover img {
   transform: scale(1.04);
 }
+.masonry-grid {
+  /* Laptops and tablets */
+}
 @media (max-width: 1024px) {
   .masonry-grid {
     columns: 3;
@@ -1869,6 +1883,9 @@ img {
     margin-bottom: 16px;
   }
 }
+.masonry-grid {
+  /* Mobile landscape and small tablets */
+}
 @media (max-width: 768px) {
   .masonry-grid {
     columns: 2;
@@ -1877,6 +1894,9 @@ img {
   .masonry-grid .img-container {
     margin-bottom: 14px;
   }
+}
+.masonry-grid {
+  /* Small mobile */
 }
 @media (max-width: 480px) {
   .masonry-grid {

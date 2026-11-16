@@ -33,7 +33,7 @@ Four things, in order:
 
 1. **`.env`** — `NEXT_PUBLIC_API_BASE_URL` (the CMS) and `NEXT_PUBLIC_SITE_URL` (the live domain, no trailing slash). Both are `NEXT_PUBLIC_*`, so they are inlined at build time; changing either needs a rebuild.
 2. **[`src/site.config.js`](src/site.config.js)** — brand name, default description, logo, default social card, locale, country, the header/mobile/footer navigation (`nav`, `footer`), and which routes and CMS collections go into the sitemap. Every `<title>` suffix, canonical, JSON-LD id and robots rule derives from this file. Nothing else in `src/` should hardcode a brand or a domain; if you find yourself typing one, put it here instead.
-3. **`public/`** — swap the logo, icons and images. Only `images/logo.png` and a few icons ship in the repo. The favicon set `_app.js` links (`/favicon/*`), the default social card, the page-banner fallbacks (`/images/*-bg.webp`) and several icons the components name are **not** in the repo; add them or update the paths, or you will serve 404s and a dead `og:image`.
+3. **`public/`** — swap the logo, icons and images. Only `images/logo.png`, `images/popup-frame.jpg` (the enquiry popup's side image) and a few icons ship in the repo. The favicon set `_app.js` links (`/favicon/*`), the default social card, the page-banner fallbacks (`/images/*-bg.webp`) and several icons the components name are **not** in the repo; add them or update the paths, or you will serve 404s and a dead `og:image`.
 4. **Copy in the components** — some Grovanta-specific copy (CTA bands, the home "process" ribbon, the leadership section text, contact-detail fallbacks) still lives in the components. Search for the old brand name and rewrite it.
 5. **`src/styles/main.scss` + `global.scss`** — the design. See [Styles](#styles) for the compile step.
 
@@ -59,7 +59,7 @@ and accept `?page=`, `?page_size=`, `?order_by=` (`-` for descending), `?slug=` 
 | `/api/faq/`, `/api/faq-category/` | FAQs page. |
 | `/api/leadership/` | Our team page. |
 | `/api/contact/` | Contact and popup enquiry forms. |
-| `/api/testimonial/`, `/api/case-study/` | Declared, not yet wired to a page. |
+| `/api/testimonial/` | Declared, not yet wired to a page. |
 
 Records that back a detail page need a `slug`. Blogs and careers also need `created_at` / `updated_at` (used for `lastmod` and article dates), and careers an `is_active` flag — inactive jobs are kept out of the sitemap.
 
@@ -76,9 +76,9 @@ Configured in `site.config.js`, assembled in [`src/utils/seo.js`](src/utils/seo.
 - Precedence, lowest to highest: the site-wide `global_head` → tags derived from the page (title, description, canonical, Open Graph, Twitter) → the `/api/head/` record for the route → a record's own `head` field. Whatever an editor fills in wins, and a page never ships without a title, description, canonical and social card. Pages that pass `noindex` (thank-you, 404, closed jobs) stay unindexed whatever the CMS says.
 - `/sitemap.xml` and `/robots.txt` are **routes**, not files in `public/`, so they follow `NEXT_PUBLIC_SITE_URL` and pick up new CMS records without a deploy. Add a section to the sitemap by adding a collection to `site.config.js`.
 - `robots.txt` serves `Disallow: /` to any host that is not the one `NEXT_PUBLIC_SITE_URL` names. Staging and preview deploys are therefore de-indexed by default — set the env var to the real domain at launch, or the live site stays blocked.
-- JSON-LD builders for Organization, BreadcrumbList, BlogPosting and JobPosting live in `src/utils/seo.js`; pages pass them to `<Seo jsonLd={[...]} />`.
+- Structured data (JSON-LD) builders live in `src/utils/seo.js` and pages pass them to `<Seo jsonLd={[...]} />`: WebSite + Organization on home (social profiles and contact details come from site settings — placeholder URLs like `https://www.linkedin.com/in/` are ignored), FAQPage on `/faqs`, BlogPosting and JobPosting on detail pages, BreadcrumbList on inner pages.
 
-**Known gap:** the listing pages (FAQs, team, careers, blog list, contact) fetch their *content* in the browser, so their prerendered HTML has head tags but no body text. Privacy policy and terms are rendered server-side.
+Content is server-rendered too: FAQs, team, careers, the first page of the blog list, privacy policy and terms are fetched in `getStaticProps` and refreshed every 60 seconds, so search engines see the text, not an empty shell. Blog filters and later pages are fetched in the browser. If the CMS is down when a page regenerates, the last good version keeps being served. **Still client-side:** the home page sections and the contact details.
 
 ## Styles
 
@@ -90,6 +90,59 @@ Pages Router (`src/pages`), `@/*` → `./src/*`. Page files are thin — data fe
 
 The one rule that will bite you: **server-side code uses `fetchApi()`, client-side code uses the `APIBase` instances.** `fetchApi` returns `null` on any failure so a CMS outage cannot fail a build; `APIBase` is a browser client that toasts errors. See [src/utils/ApiBase.md](src/utils/ApiBase.md).
 
+### Adding a CMS-backed page
+
+The whole data flow is in the page file — fetch in `getStaticProps`, pass the CMS records straight to a component, which reads the API's own field names. No mapping layer to learn. A testimonials page, for example:
+
+```js
+// src/pages/testimonials/index.js
+import Seo from "@/components/common/Seo";
+import Testimonials from "@/components/Testimonials/Index";
+import {
+    assertCmsData, fetchApi, fetchPageSeo, listResults, REVALIDATE_SECONDS,
+} from "@/utils/functionUtils";
+
+export default function Page({ seo, testimonials }) {
+    return (
+        <>
+            <Seo title="Testimonials" description={seo?.description} path="/testimonials" />
+            <Testimonials testimonials={testimonials} />
+        </>
+    );
+}
+
+export async function getStaticProps() {
+    const [{ seoHead, seo }, res] = await Promise.all([
+        fetchPageSeo("/testimonials"),                 // CMS head tags for this route
+        fetchApi("/api/testimonial/?order_by=order_by"),
+    ]);
+
+    assertCmsData(res); // CMS down at runtime? keep serving the last good page
+
+    return {
+        props: { seoHead, seo, testimonials: listResults(res) },
+        revalidate: REVALIDATE_SECONDS,                // refresh every 60 s
+    };
+}
+```
+
+```jsx
+// src/components/Testimonials/Index.jsx — use the API's field names
+// (`message` and `name` are illustrative; check the endpoint's JSON)
+const Testimonials = ({ testimonials }) => (
+    <section className="container">
+        {testimonials.map((item) => (
+            <blockquote key={item.id}>{item.message} — {item.name}</blockquote>
+        ))}
+    </section>
+);
+export default Testimonials;
+```
+
+Then add the route to `site.config.js` (`nav`/`footer`, and `sitemap.staticRoutes`). Look at the endpoint's JSON (`curl <api>/api/testimonial/`) for the real field names.
+
 Forms are built with `GlobalForm` (`src/components/common/GlobalForm.jsx`) from a field config array; its header comment lists the field types and options. It awaits your `on_Submit` and disables the button meanwhile.
+
+CMS images go through `CmsImage` (`src/components/common/CmsImage.jsx`), a `next/image` wrapper: uploads under the CMS's `/media/` and raster files in `public/` are resized and served as modern formats; anything else (SVGs, images on other hosts, a local dev backend) is served as-is instead of erroring. Pass a `sizes` that matches how wide the image renders.
 
 [CLAUDE.md](CLAUDE.md) has the full architecture tour — conventions, the data-fetching split, providers, and the CMS mapping layer.
